@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract StreamBoost {
     address public owner;
@@ -266,7 +262,47 @@ contract StreamBoost {
         return allStreamIds;
     }
     
-    function getAssetState(string memory _symbol) external view returns (AssetState memory) {
-        return assets[_symbol];
+    function getAssetPrice(string memory _symbol) external view returns (uint256) {
+        return assets[_symbol].price;
+    }
+    
+    function getStreamStatus(string memory _streamId) external view returns (StreamStatus) {
+        return streams[_streamId].status;
+    }
+    
+    function getStreamClaimedAmount(string memory _streamId) external view returns (uint256) {
+        return streams[_streamId].claimedAmount;
+    }
+    
+    function getStreamBoosted(string memory _streamId) external view returns (bool) {
+        return streams[_streamId].boosted;
+    }
+    
+    function getStreamBoostAPR(string memory _streamId) external view returns (uint256) {
+        return streams[_streamId].boostAPR;
+    }
+    
+    function getStreamPausedAt(string memory _streamId) external view returns (uint256) {
+        return streams[_streamId].pausedAt;
+    }
+    
+    function getStreamEndTime(string memory _streamId) external view returns (uint256) {
+        return streams[_streamId].endTime;
+    }
+    
+    function getStreamCliffTime(string memory _streamId) external view returns (uint256) {
+        return streams[_streamId].cliffTime;
+    }
+    
+    function getProtocolTotalActiveStreams() external view returns (uint256) {
+        return protocolStats.totalActiveStreams;
+    }
+    
+    function getProtocolTotalValueLocked() external view returns (uint256) {
+        return protocolStats.totalValueLocked;
+    }
+    
+    function getProtocolLastUpdated() external view returns (uint256) {
+        return protocolStats.lastUpdated;
     }
 }
