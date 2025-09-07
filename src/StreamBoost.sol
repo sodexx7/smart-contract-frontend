@@ -80,6 +80,13 @@ contract StreamBoost is Ownable {
     event StreamPaused(string indexed streamId);
     event StreamResumed(string indexed streamId);
     event StreamCancelled(string indexed streamId);
+    event StreamTerminated(
+        string indexed streamId, 
+        address indexed terminator,
+        uint256 penaltyAmount,
+        uint256 remainingAmount
+    );
+    event PenaltyApplied(string indexed streamId, uint256 penaltyAmount);
 
     constructor() Ownable(msg.sender) {
         protocolStats.lastUpdated = getCurrentTimestamp();
@@ -167,7 +174,10 @@ contract StreamBoost is Ownable {
         emit StreamClaimed(_streamId, _amount);
     }
 
-    function claimStreamWithBoost(string memory _streamId, uint256 _amount) external {
+    function claimStreamWithBoost(
+        string memory _streamId,
+        uint256 _amount
+    ) external {
         Stream storage stream = streams[_streamId];
         require(bytes(stream.id).length > 0, "Stream not found");
         require(msg.sender == stream.recipient, "Not recipient");
@@ -180,13 +190,14 @@ contract StreamBoost is Ownable {
         // Update and claim boost earnings
         uint256 totalBoostEarned = getBoostEarnings(_streamId);
         stream.financials.totalBoostEarned = totalBoostEarned;
-        
-        uint256 claimableBoost = totalBoostEarned - stream.financials.claimedBoostAmount;
-        
+
+        uint256 claimableBoost = totalBoostEarned -
+            stream.financials.claimedBoostAmount;
+
         // Claim principal
         stream.financials.claimedAmount += _amount;
         IERC20(stream.token).transfer(stream.recipient, _amount);
-        
+
         // Claim boost rewards if any
         if (claimableBoost > 0) {
             stream.financials.claimedBoostAmount += claimableBoost;
@@ -218,11 +229,66 @@ contract StreamBoost is Ownable {
         // Update boost earnings and claim
         stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
         stream.financials.claimedBoostAmount += claimableBoost;
-        
+
         IERC20(stream.token).transfer(stream.recipient, claimableBoost);
         protocolStats.lastUpdated = getCurrentTimestamp();
-        
+
         emit BoostClaimed(_streamId, claimableBoost);
+    }
+
+    function terminateStream(string memory _streamId) external {
+        Stream storage stream = streams[_streamId];
+        require(bytes(stream.id).length > 0, "Stream not found");
+        require(
+            msg.sender == stream.sender || msg.sender == stream.recipient,
+            "Only sender or recipient can terminate"
+        );
+        require(
+            stream.status == StreamStatus.ACTIVE || stream.status == StreamStatus.PAUSED,
+            "Stream not active or paused"
+        );
+
+        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
+        require(remainingAmount > 0, "No remaining amount to terminate");
+
+        // Calculate penalty
+        uint256 penaltyAmount = calculateEarlyTerminationPenalty(_streamId);
+        uint256 transferAmount = remainingAmount - penaltyAmount;
+
+        // Update boost earnings before termination
+        if (stream.financials.boosted) {
+            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
+        }
+
+        // Apply penalty
+        stream.financials.penaltiesAccrued = penaltyAmount;
+        stream.financials.claimedAmount = stream.financials.totalAmount;
+        
+        // Mark stream as cancelled
+        stream.status = StreamStatus.CANCELLED;
+        protocolStats.totalActiveStreams--;
+
+        // Transfer remaining amount to recipient (after penalty)
+        if (transferAmount > 0) {
+            IERC20(stream.token).transfer(stream.recipient, transferAmount);
+        }
+
+        // Transfer any unclaimed boost rewards
+        if (stream.financials.boosted) {
+            uint256 claimableBoost = stream.financials.totalBoostEarned - stream.financials.claimedBoostAmount;
+            if (claimableBoost > 0) {
+                stream.financials.claimedBoostAmount += claimableBoost;
+                IERC20(stream.token).transfer(stream.recipient, claimableBoost);
+                emit BoostClaimed(_streamId, claimableBoost);
+            }
+        }
+
+        protocolStats.lastUpdated = getCurrentTimestamp();
+        
+        if (penaltyAmount > 0) {
+            emit PenaltyApplied(_streamId, penaltyAmount);
+        }
+        emit StreamTerminated(_streamId, msg.sender, penaltyAmount, transferAmount);
     }
 
     function pauseStream(string memory _streamId) external {
@@ -324,26 +390,32 @@ contract StreamBoost is Ownable {
         uint256 startTime = stream.timing.startTime;
         uint256 endTime = stream.timing.endTime;
         uint256 currentTime = getCurrentTimestamp();
-        
+
         // Handle time bounds
-        uint256 effectiveEndTime = currentTime > endTime ? endTime : currentTime;
+        uint256 effectiveEndTime = currentTime > endTime
+            ? endTime
+            : currentTime;
         if (currentTime < startTime) {
             return 0;
         }
 
         // Calculate elapsed time for yield generation
         uint256 elapsedTime = effectiveEndTime - startTime;
-        
+
         // Calculate average unclaimed principal over time
         // Simplified linear decay: starts at totalAmount, ends at currentUnclaimed
-        uint256 currentUnclaimed = stream.financials.totalAmount - stream.financials.claimedAmount;
-        uint256 avgUnclaimed = (stream.financials.totalAmount + currentUnclaimed) / 2;
-        
+        uint256 currentUnclaimed = stream.financials.totalAmount -
+            stream.financials.claimedAmount;
+        uint256 avgUnclaimed = (stream.financials.totalAmount +
+            currentUnclaimed) / 2;
+
         // Annual yield calculation: principal * APR * time / year
         // boostAPR is in basis points (720 = 7.2%)
         uint256 yearInSeconds = 365 days;
-        uint256 boostEarnings = (avgUnclaimed * stream.financials.boostAPR * elapsedTime) / (10000 * yearInSeconds);
-        
+        uint256 boostEarnings = (avgUnclaimed *
+            stream.financials.boostAPR *
+            elapsedTime) / (10000 * yearInSeconds);
+
         return boostEarnings;
     }
 
@@ -352,10 +424,11 @@ contract StreamBoost is Ownable {
     ) public view returns (uint256) {
         uint256 totalBoostEarned = getBoostEarnings(_streamId);
         Stream memory stream = streams[_streamId];
-        
-        return totalBoostEarned > stream.financials.claimedBoostAmount
-            ? totalBoostEarned - stream.financials.claimedBoostAmount
-            : 0;
+
+        return
+            totalBoostEarned > stream.financials.claimedBoostAmount
+                ? totalBoostEarned - stream.financials.claimedBoostAmount
+                : 0;
     }
 
     function getStreamProgress(
@@ -366,6 +439,67 @@ contract StreamBoost is Ownable {
 
         if (stream.financials.totalAmount == 0) return 0;
         return (vestedAmount * 100) / stream.financials.totalAmount;
+    }
+
+    function calculateEarlyTerminationPenalty(
+        string memory _streamId
+    ) public view returns (uint256) {
+        Stream memory stream = streams[_streamId];
+        if (bytes(stream.id).length == 0) {
+            return 0;
+        }
+
+        // Can only calculate penalties for active or paused streams
+        if (stream.status != StreamStatus.ACTIVE && stream.status != StreamStatus.PAUSED) {
+            return 0;
+        }
+
+        uint256 progress = getStreamProgress(_streamId);
+        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
+        
+        if (remainingAmount == 0) {
+            return 0;
+        }
+
+        // Time-based penalty rates (in basis points)
+        uint256 penaltyRate;
+        
+        if (progress < 25) {
+            penaltyRate = 2000; // 20%
+        } else if (progress < 50) {
+            penaltyRate = 1500; // 15%
+        } else if (progress < 75) {
+            penaltyRate = 1000; // 10%
+        } else if (progress < 90) {
+            penaltyRate = 500;  // 5%
+        } else {
+            penaltyRate = 200;  // 2%
+        }
+
+        return (remainingAmount * penaltyRate) / 10000;
+    }
+
+    function getPenaltyInfo(
+        string memory _streamId
+    ) public view returns (uint256 penaltyAmount, uint256 remainingAfterPenalty, uint256 penaltyRate) {
+        penaltyAmount = calculateEarlyTerminationPenalty(_streamId);
+        
+        Stream memory stream = streams[_streamId];
+        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
+        remainingAfterPenalty = remainingAmount > penaltyAmount ? remainingAmount - penaltyAmount : 0;
+        
+        uint256 progress = getStreamProgress(_streamId);
+        if (progress < 25) {
+            penaltyRate = 2000; // 20%
+        } else if (progress < 50) {
+            penaltyRate = 1500; // 15%
+        } else if (progress < 75) {
+            penaltyRate = 1000; // 10%
+        } else if (progress < 90) {
+            penaltyRate = 500;  // 5%
+        } else {
+            penaltyRate = 200;  // 2%
+        }
     }
 
     function getUserOutgoingStreams(
@@ -426,6 +560,16 @@ contract StreamBoost is Ownable {
         protocolStats.totalActiveStreams--;
         protocolStats.lastUpdated = getCurrentTimestamp();
         emit StreamCancelled(_streamId);
+    }
+
+    function mockApplyPenalty(
+        string memory _streamId,
+        uint256 _penaltyAmount
+    ) external onlyOwner {
+        require(bytes(streams[_streamId].id).length > 0, "Stream not found");
+        streams[_streamId].financials.penaltiesAccrued += _penaltyAmount;
+        protocolStats.lastUpdated = getCurrentTimestamp();
+        emit PenaltyApplied(_streamId, _penaltyAmount);
     }
 
     function getAllStreamIds() external view returns (string[] memory) {

@@ -911,4 +911,424 @@ contract StreamBoostTest is Test {
         StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
         assertEq(stream.financials.boostAPR, 1000);
     }
+
+    // === PENALTY FUNCTIONALITY TESTS ===
+
+    function testPenaltyCalculationAtDifferentProgress() public {
+        string memory streamId = "penalty_progress_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Test 0% progress (20% penalty)
+        uint256 penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        assertEq(penalty, STREAM_AMOUNT * 20 / 100); // 20% penalty
+
+        // Test 25% progress (15% penalty)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 7 days + 12 hours);
+        
+        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        // At 25% progress but no claims made, penalty is 15% of full amount
+        assertEq(penalty, STREAM_AMOUNT * 15 / 100); // 15% penalty on full amount
+
+        // Test 50% progress (10% penalty)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
+        
+        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        // At 50% progress but no claims made, penalty is 10% of full amount
+        assertEq(penalty, STREAM_AMOUNT * 10 / 100); // 10% penalty on full amount
+
+        // Test 75% progress (5% penalty)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 22 days + 12 hours);
+        
+        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        // At 75% progress but no claims made, penalty is 5% of full amount
+        assertEq(penalty, STREAM_AMOUNT * 5 / 100); // 5% penalty on full amount
+
+        // Test 90% progress (2% penalty)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 27 days);
+        
+        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        // At 90% progress but no claims made, penalty is 2% of full amount
+        assertEq(penalty, STREAM_AMOUNT * 2 / 100); // 2% penalty on full amount
+    }
+
+    function testTerminateStreamBySender() public {
+        string memory streamId = "terminate_sender_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to 30% progress
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 9 days);
+
+        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
+        uint256 expectedPenalty = remainingAmount * 15 / 100; // 15% penalty on full amount
+        uint256 expectedTransfer = remainingAmount - expectedPenalty;
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        // Terminate by sender
+        vm.expectEmit(true, true, false, true);
+        emit StreamBoost.StreamTerminated(streamId, sender, expectedPenalty, expectedTransfer);
+        
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Verify recipient received expected amount
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
+
+        // Verify stream state
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
+        assertEq(stream.financials.claimedAmount, STREAM_AMOUNT);
+        assertTrue(stream.status == StreamBoost.StreamStatus.CANCELLED);
+    }
+
+    function testTerminateStreamByRecipient() public {
+        string memory streamId = "terminate_recipient_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to 60% progress
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 18 days);
+
+        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
+        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty on full amount
+        uint256 expectedTransfer = remainingAmount - expectedPenalty;
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        // Terminate by recipient
+        vm.expectEmit(true, true, false, true);
+        emit StreamBoost.StreamTerminated(streamId, recipient, expectedPenalty, expectedTransfer);
+        
+        vm.prank(recipient);
+        streamBoost.terminateStream(streamId);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Verify recipient received expected amount
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
+
+        // Verify penalty was applied
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
+    }
+
+    function testTerminateStreamWithBoostRewards() public {
+        string memory streamId = "terminate_boost_test";
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Fast forward to 40% progress
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 12 days);
+
+        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
+        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
+        uint256 expectedPenalty = remainingAmount * 15 / 100; // 15% penalty on full amount
+        uint256 expectedTransfer = remainingAmount - expectedPenalty;
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        // Terminate stream
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Should receive principal (after penalty) + boost rewards
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer + boostAmount);
+
+        // Verify boost was claimed
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.claimedBoostAmount, boostAmount);
+    }
+
+    function testTerminateStreamAfterPartialClaim() public {
+        string memory streamId = "terminate_partial_claim_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to 50% progress
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
+
+        // Claim 25% of total
+        uint256 claimAmount = STREAM_AMOUNT / 4;
+        vm.prank(recipient);
+        streamBoost.claimStream(streamId, claimAmount);
+
+        // Now terminate - should only penalize remaining amount
+        uint256 remainingAmount = STREAM_AMOUNT - claimAmount; // 75% - 25% = 50% remaining
+        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty on remaining
+        uint256 expectedTransfer = remainingAmount - expectedPenalty;
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Verify correct amount transferred
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
+
+        // Verify penalty calculation
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
+        assertEq(stream.financials.claimedAmount, STREAM_AMOUNT);
+    }
+
+    function testCannotTerminateCompletedStream() public {
+        string memory streamId = "terminate_completed_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to completion
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 30 days);
+
+        // Claim all
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        vm.prank(recipient);
+        streamBoost.claimStream(streamId, claimableAmount);
+
+        // Try to terminate completed stream
+        vm.expectRevert("Stream not active or paused");
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+    }
+
+    function testUnauthorizedTermination() public {
+        string memory streamId = "unauthorized_terminate_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Try to terminate by unauthorized user
+        address unauthorized = address(0x999);
+        vm.expectRevert("Only sender or recipient can terminate");
+        vm.prank(unauthorized);
+        streamBoost.terminateStream(streamId);
+    }
+
+    function testTerminatePausedStream() public {
+        string memory streamId = "terminate_paused_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward and pause
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+        
+        vm.prank(sender);
+        streamBoost.pauseStream(streamId);
+
+        // Should be able to terminate paused stream
+        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
+        uint256 expectedPenalty = remainingAmount * 20 / 100; // 20% penalty (33% progress = first bracket)
+
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
+        assertTrue(stream.status == StreamBoost.StreamStatus.CANCELLED);
+    }
+
+    function testPenaltyInfoFunction() public {
+        string memory streamId = "penalty_info_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to 60% progress
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 18 days);
+
+        (uint256 penaltyAmount, uint256 remainingAfterPenalty, uint256 penaltyRate) = 
+            streamBoost.getPenaltyInfo(streamId);
+
+        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
+        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty
+        
+        assertEq(penaltyAmount, expectedPenalty);
+        assertEq(remainingAfterPenalty, remainingAmount - expectedPenalty);
+        assertEq(penaltyRate, 1000); // 10% in basis points
+    }
+
+    function testMockApplyPenalty() public {
+        string memory streamId = "mock_penalty_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        uint256 penaltyAmount = 1000e18;
+
+        // Apply mock penalty
+        vm.expectEmit(true, false, false, true);
+        emit StreamBoost.PenaltyApplied(streamId, penaltyAmount);
+        
+        vm.prank(owner);
+        streamBoost.mockApplyPenalty(streamId, penaltyAmount);
+
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, penaltyAmount);
+    }
+
+    function testNoPenaltyForCompletedStream() public {
+        string memory streamId = "no_penalty_completed_test";
+        
+        // Create stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false
+        );
+        vm.stopPrank();
+
+        // Complete the stream
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 30 days);
+
+        // Claim all to complete
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        vm.prank(recipient);
+        streamBoost.claimStream(streamId, claimableAmount);
+
+        // Check penalty calculation returns 0 for completed stream
+        uint256 penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
+        assertEq(penalty, 0);
+    }
 }
