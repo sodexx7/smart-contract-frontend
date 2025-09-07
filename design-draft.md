@@ -245,7 +245,186 @@ This penalty system provides **fair early exit mechanisms** while **protecting s
 
 ---
 
-## 4. Clear Workflow (User → Contract Sequence)
+## 4. Cliff Vesting System
+
+The StreamBoost protocol implements a **cliff vesting mechanism** that allows senders to create streams with an initial lock-up period during which principal tokens cannot be claimed, while still enabling boost reward accrual and claiming throughout the stream duration.
+
+### Cliff Configuration & Validation
+
+**Cliff Duration Setup**:
+```solidity
+function createStream(
+    string memory _id,
+    address _recipient,
+    address _token,
+    uint256 _totalAmount,
+    uint256 _duration,
+    uint256 _cliffDuration,  // Optional cliff period
+    bool _boosted
+) external
+```
+
+**Validation Rules**:
+- **Duration Constraint**: `_cliffDuration <= _duration` (cliff cannot exceed stream duration)
+- **Practical Limits**: Cliff duration must be at least 1 hour if specified (minimum 3600 seconds)
+- **Edge Case Prevention**: Cliff duration cannot equal stream duration (no claimable period would exist)
+- **Zero Cliff Allowed**: `_cliffDuration = 0` creates a stream without cliff (immediate claiming enabled)
+
+### Cliff Mechanics & Behavior
+
+**Dual Progress Tracking**:
+```solidity
+// Overall stream progress (vesting continues during cliff)
+function getStreamProgress(streamId) returns (uint256 progressPct)
+
+// Claimable progress (0% during cliff, normal after)
+function getClaimableProgress(streamId) returns (uint256 claimablePct)
+
+// Cliff-specific progress tracking
+function getCliffProgress(streamId) returns (uint256 cliffProgress, bool cliffPassed)
+```
+
+**Vesting vs Claiming Separation**:
+- **Vesting Continues**: Principal tokens vest linearly throughout entire stream duration, including cliff period
+- **Claiming Blocked**: Recipients cannot claim principal tokens until cliff period ends
+- **Boost Exception**: Boost rewards can be claimed throughout the entire stream duration, even during cliff
+
+### Cliff Impact on Core Functions
+
+**Claiming Behavior During Cliff**:
+```solidity
+function getClaimableAmount(streamId) public view returns (uint256) {
+    // Returns 0 if cliff is active, normal calculation after cliff
+    if (cliffTime > 0 && getCurrentTimestamp() < cliffTime) {
+        return 0;  // No principal claimable during cliff
+    }
+    return vestedAmount - claimedAmount;
+}
+
+function canClaimDuringCliff(streamId) public view returns (bool canClaimPrincipal, bool canClaimBoost) {
+    bool cliffActive = stream.cliffTime > 0 && currentTime < stream.cliffTime;
+    canClaimPrincipal = !cliffActive;        // Principal blocked during cliff
+    canClaimBoost = stream.financials.boosted; // Boost always claimable if enabled
+}
+```
+
+**Penalty Calculations with Cliff**:
+- **Enhanced Penalty**: 25% penalty rate during cliff period (higher than normal rates)
+- **Post-Cliff Penalties**: Standard progressive rates apply after cliff passes
+- **Cliff Detection**: Termination logic automatically detects cliff status and applies appropriate penalty
+
+```solidity
+function calculateEarlyTerminationPenalty(streamId) public view returns (uint256) {
+    bool inCliffPeriod = stream.cliffTime > 0 && currentTime < stream.cliffTime;
+    
+    if (inCliffPeriod) {
+        penaltyRate = 2500; // 25% during cliff
+    } else {
+        // Progressive rates based on completion: 20% → 2%
+    }
+}
+```
+
+### Cliff Information & Monitoring
+
+**Cliff Status Functions**:
+```solidity
+function getCliffInfo(streamId) public view returns (
+    uint256 cliffTime,      // Absolute cliff end timestamp
+    uint256 timeUntilCliff, // Seconds remaining until cliff ends
+    bool hasCliff,          // Whether stream has cliff configuration
+    bool cliffPassed        // Whether cliff period has ended
+)
+```
+
+**Progress Tracking**:
+- **Cliff Progress**: Tracks progress through cliff period (0% → 100%)
+- **Time Remaining**: Countdown to cliff end for UI display
+- **Status Integration**: Cliff status integrated with overall stream monitoring
+
+### Example Cliff Scenarios
+
+**Scenario 1: Standard Cliff Setup**
+- Stream: 10,000 USDC, 365-day duration, 90-day cliff
+- During cliff (days 0-90): 0 USDC claimable principal, boost rewards available
+- After cliff (days 90-365): Normal linear claiming of principal + continued boost accrual
+
+**Scenario 2: Cliff Termination**
+- Stream terminated on day 60 (during 90-day cliff)
+- Penalty: 25% on remaining amount (higher cliff penalty)
+- Recipient receives: 75% of remaining principal + all boost rewards
+- Boost rewards exempt from penalty throughout
+
+**Scenario 3: Mixed Claiming Strategy**
+```
+Day 30 (cliff active):  claimBoostOnly() → Harvest yield, keep principal locked
+Day 100 (cliff ended):  claimStreamWithBoost() → Claim principal + remaining boost
+```
+
+### Cliff Integration with Dual Earnings
+
+**Principal Stream During Cliff**:
+- Vesting continues normally: `vestedAmount = totalAmount * elapsed / duration`
+- Claiming blocked: `claimableAmount = 0` until cliff ends
+- Progress tracking: Separate cliff progress vs overall stream progress
+
+**Boost Stream During Cliff**:
+- **Unaffected by cliff**: Boost rewards accrue and can be claimed throughout
+- **Strategic advantage**: Recipients can harvest yield during cliff while principal remains locked
+- **Penalty protection**: Boost rewards remain exempt from termination penalties
+
+### Cliff Validation & Edge Cases
+
+**Input Validation**:
+```solidity
+function validateCliffSetup(uint256 _duration, uint256 _cliffDuration) 
+    public pure returns (bool isValid, string memory reason) {
+    
+    if (_cliffDuration > _duration) {
+        return (false, "Cliff duration exceeds stream duration");
+    }
+    if (_cliffDuration == _duration) {
+        return (false, "Cliff duration equals stream duration - no claimable period");
+    }
+    if (_duration > 0 && _cliffDuration > 0 && _cliffDuration < 3600) {
+        return (false, "Cliff duration too short (minimum 1 hour)");
+    }
+    return (true, "Valid cliff setup");
+}
+```
+
+**Edge Case Handling**:
+- **Zero Cliff**: `cliffTime = 0` indicates no cliff (immediate claiming enabled)
+- **Cliff Boundary**: Exact cliff end timestamp enables claiming
+- **Paused Streams**: Cliff timing unaffected by pause/resume (absolute timestamps)
+- **Mock Time**: Cliff calculations respect mock timestamp for testing
+
+### UI/UX Considerations
+
+**Progress Visualization**:
+- **Dual Progress Bars**: Cliff progress (0-100%) + overall stream progress (0-100%)
+- **Status Indicators**: "Cliff Active", "Cliff Ended", visual countdown timers
+- **Claiming Hints**: Clear messaging about principal vs boost availability
+
+**User Guidance**:
+- **Cliff Warning**: Clear disclosure during stream creation about claiming restrictions
+- **Strategic Options**: Educate users about boost-only claiming during cliff periods
+- **Termination Impact**: Penalty preview shows enhanced cliff penalties
+
+### Test Coverage
+
+**Comprehensive Test Suite**:
+- **Validation Tests**: Cliff duration boundary conditions and edge cases
+- **Functional Tests**: Claiming behavior during and after cliff periods
+- **Progress Tests**: Cliff vs stream progress calculations
+- **Integration Tests**: Cliff interaction with penalties, boost rewards, termination
+- **Edge Case Tests**: Zero cliff, boundary timestamps, mock time scenarios
+
+This cliff system provides **flexible vesting controls** for stream creators while maintaining **clear user expectations** and **fair boost reward access** throughout the stream lifecycle.
+
+---
+
+## 5. Clear Workflow (User → Contract Sequence)
 
 Primary user goal: Create and manage token streams that vest linearly (optionally with a cliff) while the locked principal auto‑earns a simulated yield.
 
@@ -254,24 +433,25 @@ Main flows (conceptual steps only):
 1. Create Stream Draft (select token, recipient, total amount, duration, cliff?, enableBoost?)
 2. Approve Token (if allowance insufficient)
 3. Start Stream (deploy/register)
-4. Monitor Stream (progress %, claimable amount, boost APR)
+4. Monitor Stream (progress %, claimable amount, boost APR, cliff status)
 5. (Optional) Top Up / Extend / Pause / Resume
-6. Recipient Claims (partial or full vested / claimable portion)
+6. Recipient Claims (partial or full vested / claimable portion, boost-only during cliff)
 7. (Optional) Early Termination (by sender or recipient with time-based penalties)
 8. Stream Closure (natural completion or early termination)
 
 Recipient flow:
 
 1. View Incoming Streams
-2. Claim Available Tokens
-3. Track Boost Rewards
-4. Acknowledge Expired / Closed Streams
+2. Monitor Cliff Status & Progress
+3. Claim Available Tokens (boost-only during cliff, principal+boost after cliff)
+4. Track Boost Rewards
+5. Acknowledge Expired / Closed Streams
 
-UI: Stepper always shows current position.
+UI: Stepper always shows current position, including cliff progress.
 
 ---
 
-## 5. Minimal Data Structures
+## 6. Minimal Data Structures
 
 ```ts
 type UserState = {
@@ -333,7 +513,13 @@ type Stream = {
   claimableAmount: number;
   claimableBoostAmount?: number;
   progressPct: number; // 0–100
+  cliffProgressPct?: number; // 0–100 cliff completion
   timeRemainingSec: number;
+  timeUntilCliffSec?: number; // seconds until cliff ends
+  hasCliff: boolean;
+  cliffPassed: boolean;
+  canClaimPrincipal: boolean;
+  canClaimBoost: boolean;
   penaltiesAccrued?: number;
 };
 
@@ -356,7 +542,7 @@ type TxRecord = {
 
 ---
 
-## 6. Core Status Tracking
+## 7. Core Status Tracking
 
 Indicators:
 
@@ -372,7 +558,7 @@ Thresholds (examples):
 
 ---
 
-## 7. List Data Display
+## 8. List Data Display
 
 Lists:
 
@@ -384,18 +570,20 @@ Lists:
 
 ---
 
-## 8. Protocol-Specific Panels
+## 9. Protocol-Specific Panels
 
-- Stream Composer (form wizard)
-- Boost Summary (APR explanation)
-- Stream Detail Drawer (timeline view)
-- Claim Console (batch claim)
+- Stream Composer (form wizard with cliff configuration)
+- Cliff Setup Panel (duration validation, UI warnings)
+- Boost Summary (APR explanation, cliff interaction)
+- Stream Detail Drawer (timeline view with cliff markers)
+- Claim Console (batch claim with cliff-aware options)
+- Progress Tracking Panel (dual cliff/stream progress bars)
 - Adjustment Panel (extend, top-up, toggle boost)
-- Termination Panel (penalty preview, termination confirmation)
+- Termination Panel (penalty preview with cliff-enhanced rates, termination confirmation)
 
 ---
 
-## 9. Transaction State Transparency
+## 10. Transaction State Transparency
 
 States: idle → signing → pending → confirmed | failed
 Multi-step (Create): Approve → Create Stream.
@@ -404,7 +592,7 @@ Failures show suggestion (e.g. increase allowance).
 
 ---
 
-## 10. Error & Edge Case Handling
+## 11. Error & Edge Case Handling
 
 Error codes:
 
@@ -417,18 +605,24 @@ Error codes:
 - STREAM_NOT_ACTIVE_OR_PAUSED
 - UNAUTHORIZED_TERMINATION
 - NO_REMAINING_AMOUNT
+- CLIFF_EXCEEDS_DURATION
+- CLIFF_TOO_SHORT
+- CLAIMING_DURING_CLIFF
+- INVALID_CLIFF_SETUP
 
 Behaviors:
 
-- Cliff gate: claim disabled pre-cliff
-- Paused: progress freeze
-- Early termination: penalty preview with graduated rates
+- Cliff gate: principal claim disabled pre-cliff, boost claims always allowed
+- Cliff validation: duration constraints and minimum thresholds enforced
+- Paused: progress freeze, cliff timing unaffected
+- Early termination: penalty preview with graduated rates, enhanced cliff penalties
 - Oracle stale: hide APR projections
 - Termination gate: only sender/recipient can terminate active/paused streams
+- Cliff progress: dual progress tracking for cliff vs overall stream completion
 
 ---
 
-## 11. Network Awareness
+## 12. Network Awareness
 
 Supported Chains: 1 (Mainnet mock), 8453 (L2 mock)
 Boost APR may differ per chain.
@@ -436,7 +630,7 @@ Mismatch prompt before creation if chain unsupported.
 
 ---
 
-## 12. Data Freshness & Real-Time Updates
+## 13. Data Freshness & Real-Time Updates
 
 Intervals:
 
@@ -449,7 +643,7 @@ Intervals:
 
 ---
 
-## 13. Security / Trust Cues
+## 14. Security / Trust Cues
 
 Pre-action review modal: token, total, duration, APR band, cliff, penalties, gas (mock).
 Termination review modal: penalty amount, net transfer, impact on boost rewards.
@@ -458,7 +652,7 @@ Simulation badge when using mock engine.
 
 ---
 
-## 14. Composability / Reusability
+## 15. Composability / Reusability
 
 Primitives:
 
@@ -472,7 +666,7 @@ Protocol logic stays separate from presentation.
 
 ---
 
-## 15. User Context
+## 16. User Context
 
 New User: Onboarding panel + educational cards.
 Existing User: Dashboard with totals & quick claims.

@@ -105,6 +105,7 @@ contract StreamBoost is Ownable {
         require(_recipient != address(0), "Invalid recipient");
         require(_totalAmount > 0, "Invalid amount");
         require(_duration > 0, "Invalid duration");
+        require(_cliffDuration <= _duration, "Cliff cannot exceed stream duration");
         require(bytes(streams[_id].id).length == 0, "Stream already exists");
 
         IERC20(_token).transferFrom(msg.sender, address(this), _totalAmount);
@@ -234,6 +235,48 @@ contract StreamBoost is Ownable {
         protocolStats.lastUpdated = getCurrentTimestamp();
 
         emit BoostClaimed(_streamId, claimableBoost);
+    }
+
+    function canClaimDuringCliff(string memory _streamId) public view returns (bool canClaimPrincipal, bool canClaimBoost) {
+        Stream memory stream = streams[_streamId];
+        
+        if (bytes(stream.id).length == 0) {
+            return (false, false);
+        }
+
+        uint256 currentTime = getCurrentTimestamp();
+        bool cliffActive = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
+        
+        // Principal can only be claimed after cliff
+        canClaimPrincipal = !cliffActive;
+        
+        // Boost can always be claimed if stream is boosted (even during cliff)
+        canClaimBoost = stream.financials.boosted;
+    }
+
+    function getCliffInfo(string memory _streamId) public view returns (
+        uint256 cliffTime,
+        uint256 timeUntilCliff,
+        bool hasCliff,
+        bool cliffPassed
+    ) {
+        Stream memory stream = streams[_streamId];
+        
+        cliffTime = stream.timing.cliffTime;
+        hasCliff = cliffTime > 0;
+        
+        if (!hasCliff) {
+            return (0, 0, false, true);
+        }
+
+        uint256 currentTime = getCurrentTimestamp();
+        cliffPassed = currentTime >= cliffTime;
+        
+        if (!cliffPassed && currentTime < cliffTime) {
+            timeUntilCliff = cliffTime - currentTime;
+        } else {
+            timeUntilCliff = 0;
+        }
     }
 
     function terminateStream(string memory _streamId) external {
@@ -441,6 +484,49 @@ contract StreamBoost is Ownable {
         return (vestedAmount * 100) / stream.financials.totalAmount;
     }
 
+    function getClaimableProgress(
+        string memory _streamId
+    ) public view returns (uint256) {
+        Stream memory stream = streams[_streamId];
+        if (stream.financials.totalAmount == 0) return 0;
+
+        uint256 currentTime = getCurrentTimestamp();
+        
+        // Before cliff: progress is 0 from claiming perspective
+        if (stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime) {
+            return 0;
+        }
+
+        // After cliff: normal progress calculation
+        uint256 vestedAmount = getVestedAmount(_streamId);
+        return (vestedAmount * 100) / stream.financials.totalAmount;
+    }
+
+    function getCliffProgress(
+        string memory _streamId
+    ) public view returns (uint256 cliffProgress, bool cliffPassed) {
+        Stream memory stream = streams[_streamId];
+        
+        if (stream.timing.cliffTime == 0) {
+            return (100, true); // No cliff means 100% cliff progress
+        }
+
+        uint256 currentTime = getCurrentTimestamp();
+        uint256 cliffDuration = stream.timing.cliffTime - stream.timing.startTime;
+        
+        if (currentTime >= stream.timing.cliffTime) {
+            return (100, true); // Cliff passed
+        }
+
+        if (currentTime <= stream.timing.startTime) {
+            return (0, false); // Before stream start
+        }
+
+        uint256 cliffElapsed = currentTime - stream.timing.startTime;
+        cliffProgress = (cliffElapsed * 100) / cliffDuration;
+        cliffPassed = false;
+    }
+
     function calculateEarlyTerminationPenalty(
         string memory _streamId
     ) public view returns (uint256) {
@@ -461,10 +547,17 @@ contract StreamBoost is Ownable {
             return 0;
         }
 
+        // Check if we're in cliff period - higher penalties during cliff
+        uint256 currentTime = getCurrentTimestamp();
+        bool inCliffPeriod = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
+
         // Time-based penalty rates (in basis points)
         uint256 penaltyRate;
         
-        if (progress < 25) {
+        if (inCliffPeriod) {
+            // Higher penalties during cliff period (25% base penalty)
+            penaltyRate = 2500; // 25%
+        } else if (progress < 25) {
             penaltyRate = 2000; // 20%
         } else if (progress < 50) {
             penaltyRate = 1500; // 15%
@@ -488,17 +581,25 @@ contract StreamBoost is Ownable {
         uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
         remainingAfterPenalty = remainingAmount > penaltyAmount ? remainingAmount - penaltyAmount : 0;
         
-        uint256 progress = getStreamProgress(_streamId);
-        if (progress < 25) {
-            penaltyRate = 2000; // 20%
-        } else if (progress < 50) {
-            penaltyRate = 1500; // 15%
-        } else if (progress < 75) {
-            penaltyRate = 1000; // 10%
-        } else if (progress < 90) {
-            penaltyRate = 500;  // 5%
+        // Check if we're in cliff period
+        uint256 currentTime = getCurrentTimestamp();
+        bool inCliffPeriod = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
+        
+        if (inCliffPeriod) {
+            penaltyRate = 2500; // 25% during cliff
         } else {
-            penaltyRate = 200;  // 2%
+            uint256 progress = getStreamProgress(_streamId);
+            if (progress < 25) {
+                penaltyRate = 2000; // 20%
+            } else if (progress < 50) {
+                penaltyRate = 1500; // 15%
+            } else if (progress < 75) {
+                penaltyRate = 1000; // 10%
+            } else if (progress < 90) {
+                penaltyRate = 500;  // 5%
+            } else {
+                penaltyRate = 200;  // 2%
+            }
         }
     }
 
@@ -570,6 +671,33 @@ contract StreamBoost is Ownable {
         streams[_streamId].financials.penaltiesAccrued += _penaltyAmount;
         protocolStats.lastUpdated = getCurrentTimestamp();
         emit PenaltyApplied(_streamId, _penaltyAmount);
+    }
+
+    function mockSetCliffTime(
+        string memory _streamId,
+        uint256 _newCliffTime
+    ) external onlyOwner {
+        require(bytes(streams[_streamId].id).length > 0, "Stream not found");
+        require(_newCliffTime <= streams[_streamId].timing.endTime, "Cliff cannot exceed stream end");
+        require(_newCliffTime >= streams[_streamId].timing.startTime, "Cliff cannot be before stream start");
+        streams[_streamId].timing.cliffTime = _newCliffTime;
+        protocolStats.lastUpdated = getCurrentTimestamp();
+    }
+
+    function validateCliffSetup(
+        uint256 _duration,
+        uint256 _cliffDuration
+    ) public pure returns (bool isValid, string memory reason) {
+        if (_cliffDuration > _duration) {
+            return (false, "Cliff duration exceeds stream duration");
+        }
+        if (_cliffDuration == _duration) {
+            return (false, "Cliff duration equals stream duration - no claimable period");
+        }
+        if (_duration > 0 && _cliffDuration > 0 && _cliffDuration < 3600) {
+            return (false, "Cliff duration too short (minimum 1 hour)");
+        }
+        return (true, "Valid cliff setup");
     }
 
     function getAllStreamIds() external view returns (string[] memory) {

@@ -1331,4 +1331,334 @@ contract StreamBoostTest is Test {
         uint256 penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
         assertEq(penalty, 0);
     }
+
+    // === COMPREHENSIVE CLIFF FUNCTIONALITY TESTS ===
+
+    function testCliffValidationInCreateStream() public {
+        string memory streamId = "cliff_validation_test";
+        
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        
+        // Test cliff duration exceeding stream duration - should revert
+        vm.expectRevert("Cliff cannot exceed stream duration");
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            31 days, // Cliff longer than duration
+            false
+        );
+        
+        // Test valid cliff creation
+        streamBoost.createStream(
+            "valid_cliff_stream",
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            7 days, // Valid cliff
+            false
+        );
+        
+        vm.stopPrank();
+        
+        StreamBoost.Stream memory stream = streamBoost.getStream("valid_cliff_stream");
+        assertEq(stream.timing.cliffTime, block.timestamp + 7 days);
+    }
+
+    function testCliffProgressCalculations() public {
+        string memory streamId = "cliff_progress_test";
+        uint256 cliffDuration = 10 days;
+        
+        // Create stream with cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            cliffDuration,
+            false
+        );
+        vm.stopPrank();
+
+        // Test cliff progress at 50% of cliff period
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 5 days);
+        
+        (uint256 cliffProgress, bool cliffPassed) = streamBoost.getCliffProgress(streamId);
+        assertEq(cliffProgress, 50); // 50% through cliff period
+        assertFalse(cliffPassed);
+        
+        uint256 claimableProgress = streamBoost.getClaimableProgress(streamId);
+        assertEq(claimableProgress, 0); // No claimable progress during cliff
+        
+        // Test after cliff passes
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days); // 15 days total (5 days past cliff)
+        
+        (cliffProgress, cliffPassed) = streamBoost.getCliffProgress(streamId);
+        assertEq(cliffProgress, 100);
+        assertTrue(cliffPassed);
+        
+        claimableProgress = streamBoost.getClaimableProgress(streamId);
+        assertTrue(claimableProgress > 0); // Should have claimable progress after cliff
+    }
+
+    function testBoostRewardsWithCliff() public {
+        string memory streamId = "boost_cliff_test";
+        
+        // Create boosted stream with cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            7 days,
+            true // boosted
+        );
+        vm.stopPrank();
+
+        // Fast forward to during cliff period
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 5 days);
+        
+        // Check claim capabilities during cliff
+        (bool canClaimPrincipal, bool canClaimBoost) = streamBoost.canClaimDuringCliff(streamId);
+        assertFalse(canClaimPrincipal); // Cannot claim principal during cliff
+        assertTrue(canClaimBoost); // Can claim boost even during cliff
+        
+        // Try to claim principal - should fail (claimable amount is 0)
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        assertEq(claimableAmount, 0);
+        
+        // Should be able to claim boost rewards during cliff
+        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
+        if (boostAmount > 0) {
+            vm.prank(recipient);
+            streamBoost.claimBoostOnly(streamId);
+        }
+    }
+
+    function testTerminationDuringCliff() public {
+        string memory streamId = "terminate_cliff_test";
+        
+        // Create stream with cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            10 days,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to during cliff period (day 5)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 5 days);
+        
+        // Calculate expected penalty (should be 25% during cliff)
+        uint256 expectedPenalty = STREAM_AMOUNT * 25 / 100;
+        uint256 expectedTransfer = STREAM_AMOUNT - expectedPenalty;
+        
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+        
+        // Terminate during cliff period
+        vm.prank(sender);
+        streamBoost.terminateStream(streamId);
+        
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Verify penalty was correctly applied
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
+        
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
+    }
+
+    function testCliffInfoFunction() public {
+        string memory streamId = "cliff_info_test";
+        uint256 cliffDuration = 7 days;
+        
+        // Create stream with cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            cliffDuration,
+            false
+        );
+        vm.stopPrank();
+
+        // Test cliff info before cliff
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 3 days);
+        
+        (uint256 cliffTime, uint256 timeUntilCliff, bool hasCliff, bool cliffPassed) = 
+            streamBoost.getCliffInfo(streamId);
+        
+        assertTrue(hasCliff);
+        assertFalse(cliffPassed);
+        assertEq(timeUntilCliff, 4 days); // 4 days remaining until cliff
+        
+        // Test cliff info after cliff
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+        
+        (cliffTime, timeUntilCliff, hasCliff, cliffPassed) = streamBoost.getCliffInfo(streamId);
+        
+        assertTrue(hasCliff);
+        assertTrue(cliffPassed);
+        assertEq(timeUntilCliff, 0);
+    }
+
+    function testCliffValidationFunction() public {
+        // Test valid cliff setup
+        (bool isValid, string memory reason) = streamBoost.validateCliffSetup(30 days, 7 days);
+        assertTrue(isValid);
+        
+        // Test cliff exceeding duration
+        (isValid, reason) = streamBoost.validateCliffSetup(30 days, 31 days);
+        assertFalse(isValid);
+        
+        // Test cliff equal to duration
+        (isValid, reason) = streamBoost.validateCliffSetup(30 days, 30 days);
+        assertFalse(isValid);
+        
+        // Test cliff too short
+        (isValid, reason) = streamBoost.validateCliffSetup(30 days, 1800); // 30 minutes
+        assertFalse(isValid);
+    }
+
+    function testMockSetCliffTime() public {
+        string memory streamId = "mock_cliff_test";
+        
+        // Create stream without cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0, // No cliff initially
+            false
+        );
+        vm.stopPrank();
+
+        // Add cliff using mock function
+        uint256 newCliffTime = block.timestamp + 7 days;
+        vm.prank(owner);
+        streamBoost.mockSetCliffTime(streamId, newCliffTime);
+        
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.timing.cliffTime, newCliffTime);
+        
+        // Test invalid cliff time - exceeds stream end
+        vm.expectRevert("Cliff cannot exceed stream end");
+        vm.startPrank(owner);
+        streamBoost.mockSetCliffTime(streamId, block.timestamp + 31 days);
+        vm.stopPrank();
+        
+        // Test invalid cliff time - before stream start  
+        vm.expectRevert("Cliff cannot be before stream start");
+        vm.startPrank(owner);
+        streamBoost.mockSetCliffTime(streamId, 0); // 0 is before stream start time (1)
+        vm.stopPrank();
+    }
+
+    function testClaimAttemptsDuringCliff() public {
+        string memory streamId = "claim_cliff_test";
+        
+        // Create stream with cliff
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            7 days,
+            false
+        );
+        vm.stopPrank();
+
+        // Fast forward to during cliff (day 3)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 3 days);
+        
+        // Verify vesting is happening but claiming is blocked
+        uint256 vestedAmount = streamBoost.getVestedAmount(streamId);
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        
+        assertTrue(vestedAmount > 0); // Vesting should continue
+        assertEq(claimableAmount, 0); // But claiming should be blocked
+        
+        // Try to claim - should fail due to zero claimable amount
+        vm.expectRevert("Amount exceeds claimable");
+        vm.prank(recipient);
+        streamBoost.claimStream(streamId, 1000e18);
+        
+        // Fast forward past cliff
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+        
+        // Now claiming should work
+        claimableAmount = streamBoost.getClaimableAmount(streamId);
+        assertTrue(claimableAmount > 0);
+        
+        vm.prank(recipient);
+        streamBoost.claimStream(streamId, claimableAmount);
+        
+        assertEq(token.balanceOf(recipient), claimableAmount);
+    }
+
+    function testCliffWithZeroDuration() public {
+        string memory streamId = "no_cliff_test";
+        
+        // Create stream with zero cliff duration
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0, // No cliff
+            false
+        );
+        vm.stopPrank();
+
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.timing.cliffTime, 0); // Should be 0
+
+        // Should be able to claim immediately
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 1 days);
+        
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        assertTrue(claimableAmount > 0);
+        
+        (bool canClaimPrincipal, bool canClaimBoost) = streamBoost.canClaimDuringCliff(streamId);
+        assertTrue(canClaimPrincipal); // Should be able to claim principal immediately
+    }
 }
