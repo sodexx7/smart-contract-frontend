@@ -64,7 +64,7 @@ contract StreamBoost is Ownable {
 
     ProtocolStats public protocolStats;
     string[] public allStreamIds;
-    
+
     uint256 private mockTimestamp;
     bool private useMockTimestamp;
 
@@ -324,12 +324,12 @@ contract StreamBoost is Ownable {
         mockTimestamp = _timestamp;
         useMockTimestamp = true;
     }
-    
+
     function mockResetTimestamp() external onlyOwner {
         useMockTimestamp = false;
         mockTimestamp = 0;
     }
-    
+
     function getCurrentTimestamp() internal view returns (uint256) {
         return useMockTimestamp ? mockTimestamp : block.timestamp;
     }
