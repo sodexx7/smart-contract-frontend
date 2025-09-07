@@ -28,6 +28,8 @@ contract StreamBoost is Ownable {
         bool boosted;
         uint256 boostAPR;
         uint256 penaltiesAccrued;
+        uint256 totalBoostEarned;
+        uint256 claimedBoostAmount;
     }
 
     struct Stream {
@@ -74,6 +76,7 @@ contract StreamBoost is Ownable {
         address indexed recipient
     );
     event StreamClaimed(string indexed streamId, uint256 amount);
+    event BoostClaimed(string indexed streamId, uint256 boostAmount);
     event StreamPaused(string indexed streamId);
     event StreamResumed(string indexed streamId);
     event StreamCancelled(string indexed streamId);
@@ -120,7 +123,9 @@ contract StreamBoost is Ownable {
                 claimedAmount: 0,
                 boosted: _boosted,
                 boostAPR: _boosted ? 720 : 0,
-                penaltiesAccrued: 0
+                penaltiesAccrued: 0,
+                totalBoostEarned: 0,
+                claimedBoostAmount: 0
             }),
             status: StreamStatus.ACTIVE
         });
@@ -145,6 +150,11 @@ contract StreamBoost is Ownable {
         uint256 claimableAmount = getClaimableAmount(_streamId);
         require(_amount <= claimableAmount, "Amount exceeds claimable");
 
+        // Update boost earnings before claim
+        if (stream.financials.boosted) {
+            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
+        }
+
         stream.financials.claimedAmount += _amount;
         IERC20(stream.token).transfer(stream.recipient, _amount);
 
@@ -157,11 +167,74 @@ contract StreamBoost is Ownable {
         emit StreamClaimed(_streamId, _amount);
     }
 
+    function claimStreamWithBoost(string memory _streamId, uint256 _amount) external {
+        Stream storage stream = streams[_streamId];
+        require(bytes(stream.id).length > 0, "Stream not found");
+        require(msg.sender == stream.recipient, "Not recipient");
+        require(stream.status == StreamStatus.ACTIVE, "Stream not active");
+        require(stream.financials.boosted, "Stream not boosted");
+
+        uint256 claimableAmount = getClaimableAmount(_streamId);
+        require(_amount <= claimableAmount, "Amount exceeds claimable");
+
+        // Update and claim boost earnings
+        uint256 totalBoostEarned = getBoostEarnings(_streamId);
+        stream.financials.totalBoostEarned = totalBoostEarned;
+        
+        uint256 claimableBoost = totalBoostEarned - stream.financials.claimedBoostAmount;
+        
+        // Claim principal
+        stream.financials.claimedAmount += _amount;
+        IERC20(stream.token).transfer(stream.recipient, _amount);
+        
+        // Claim boost rewards if any
+        if (claimableBoost > 0) {
+            stream.financials.claimedBoostAmount += claimableBoost;
+            // For simplicity, boost rewards are paid in the same token
+            // In production, this might require a separate reward token or minting
+            IERC20(stream.token).transfer(stream.recipient, claimableBoost);
+            emit BoostClaimed(_streamId, claimableBoost);
+        }
+
+        if (stream.financials.claimedAmount >= stream.financials.totalAmount) {
+            stream.status = StreamStatus.COMPLETED;
+            protocolStats.totalActiveStreams--;
+        }
+
+        protocolStats.lastUpdated = getCurrentTimestamp();
+        emit StreamClaimed(_streamId, _amount);
+    }
+
+    function claimBoostOnly(string memory _streamId) external {
+        Stream storage stream = streams[_streamId];
+        require(bytes(stream.id).length > 0, "Stream not found");
+        require(msg.sender == stream.recipient, "Not recipient");
+        require(stream.status == StreamStatus.ACTIVE, "Stream not active");
+        require(stream.financials.boosted, "Stream not boosted");
+
+        uint256 claimableBoost = getClaimableBoostAmount(_streamId);
+        require(claimableBoost > 0, "No boost rewards to claim");
+
+        // Update boost earnings and claim
+        stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
+        stream.financials.claimedBoostAmount += claimableBoost;
+        
+        IERC20(stream.token).transfer(stream.recipient, claimableBoost);
+        protocolStats.lastUpdated = getCurrentTimestamp();
+        
+        emit BoostClaimed(_streamId, claimableBoost);
+    }
+
     function pauseStream(string memory _streamId) external {
         Stream storage stream = streams[_streamId];
         require(bytes(stream.id).length > 0, "Stream not found");
         require(msg.sender == stream.sender, "Not sender");
         require(stream.status == StreamStatus.ACTIVE, "Stream not active");
+
+        // Store boost earnings up to pause point
+        if (stream.financials.boosted) {
+            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
+        }
 
         stream.status = StreamStatus.PAUSED;
         stream.timing.pausedAt = getCurrentTimestamp();
@@ -170,6 +243,7 @@ contract StreamBoost is Ownable {
         emit StreamPaused(_streamId);
     }
 
+    // @audit same as pauseStream
     function resumeStream(string memory _streamId) external {
         Stream storage stream = streams[_streamId];
         require(bytes(stream.id).length > 0, "Stream not found");
@@ -185,6 +259,7 @@ contract StreamBoost is Ownable {
         emit StreamResumed(_streamId);
     }
 
+    // @audit not pointing which token?
     function getVestedAmount(
         string memory _streamId
     ) public view returns (uint256) {
@@ -228,6 +303,59 @@ contract StreamBoost is Ownable {
             vestedAmount > stream.financials.claimedAmount
                 ? vestedAmount - stream.financials.claimedAmount
                 : 0;
+    }
+
+    function getBoostEarnings(
+        string memory _streamId
+    ) public view returns (uint256) {
+        Stream memory stream = streams[_streamId];
+        if (!stream.financials.boosted || stream.financials.boostAPR == 0) {
+            return 0;
+        }
+
+        if (stream.status == StreamStatus.PAUSED) {
+            return stream.financials.totalBoostEarned;
+        }
+        if (stream.status == StreamStatus.CANCELLED) {
+            return stream.financials.totalBoostEarned;
+        }
+
+        // Calculate time for boost calculation
+        uint256 startTime = stream.timing.startTime;
+        uint256 endTime = stream.timing.endTime;
+        uint256 currentTime = getCurrentTimestamp();
+        
+        // Handle time bounds
+        uint256 effectiveEndTime = currentTime > endTime ? endTime : currentTime;
+        if (currentTime < startTime) {
+            return 0;
+        }
+
+        // Calculate elapsed time for yield generation
+        uint256 elapsedTime = effectiveEndTime - startTime;
+        
+        // Calculate average unclaimed principal over time
+        // Simplified linear decay: starts at totalAmount, ends at currentUnclaimed
+        uint256 currentUnclaimed = stream.financials.totalAmount - stream.financials.claimedAmount;
+        uint256 avgUnclaimed = (stream.financials.totalAmount + currentUnclaimed) / 2;
+        
+        // Annual yield calculation: principal * APR * time / year
+        // boostAPR is in basis points (720 = 7.2%)
+        uint256 yearInSeconds = 365 days;
+        uint256 boostEarnings = (avgUnclaimed * stream.financials.boostAPR * elapsedTime) / (10000 * yearInSeconds);
+        
+        return boostEarnings;
+    }
+
+    function getClaimableBoostAmount(
+        string memory _streamId
+    ) public view returns (uint256) {
+        uint256 totalBoostEarned = getBoostEarnings(_streamId);
+        Stream memory stream = streams[_streamId];
+        
+        return totalBoostEarned > stream.financials.claimedBoostAmount
+            ? totalBoostEarned - stream.financials.claimedBoostAmount
+            : 0;
     }
 
     function getStreamProgress(

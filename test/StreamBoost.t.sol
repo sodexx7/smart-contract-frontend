@@ -2,6 +2,7 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
+import "forge-std/console.sol";
 import "src/StreamBoost.sol";
 import "src/MockERC20.sol";
 
@@ -636,5 +637,278 @@ contract StreamBoostTest is Test {
 
         // Should go back to real timestamp (no vesting since real time hasn't moved)
         assertEq(streamBoost.getVestedAmount(streamId), 0);
+    }
+
+    // === BOOST FUNCTIONALITY TESTS ===
+
+    function testBoostEarningsCalculation() public {
+        string memory streamId = "boost_test_1";
+        uint256 streamAmount = 10000e18; // 10,000 tokens
+        uint256 streamDuration = 365 days; // 1 year
+        
+        // Create boosted stream with 7.2% APR
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), streamAmount);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            streamAmount,
+            streamDuration,
+            0, // no cliff
+            true // boosted
+        );
+        vm.stopPrank();
+
+        // Verify boost is enabled
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertTrue(stream.financials.boosted);
+        assertEq(stream.financials.boostAPR, 720); // 7.2%
+
+        // Initially no boost earnings (just started)
+        assertEq(streamBoost.getBoostEarnings(streamId), 0);
+        assertEq(streamBoost.getClaimableBoostAmount(streamId), 0);
+
+        // Fast forward 6 months (half year)
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 182 days);
+
+        // Calculate expected boost earnings after 6 months
+        // Average unclaimed ≈ (10000 + 10000) / 2 = 10000 tokens (no claims yet)
+        // Expected: 10000 * 0.072 * 0.5 = 360 tokens
+        uint256 boostEarnings = streamBoost.getBoostEarnings(streamId);
+        assertTrue(boostEarnings > 300e18 && boostEarnings < 400e18); // Allow some variance
+
+        // Fast forward to full year
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 365 days);
+
+        uint256 fullYearBoost = streamBoost.getBoostEarnings(streamId);
+        // Expected around 360-720 tokens (depends on average principal)
+        assertTrue(fullYearBoost > 300e18);
+        assertTrue(fullYearBoost < 800e18);
+    }
+
+    function testClaimStreamWithBoost() public {
+        string memory streamId = "boost_claim_test";
+        uint256 streamAmount = 1000e18;
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), streamAmount);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            streamAmount,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Fast forward to 50% completion
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
+
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
+        
+        assertTrue(claimableAmount > 0);
+        assertTrue(boostAmount > 0);
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        // Claim with boost
+        vm.prank(recipient);
+        streamBoost.claimStreamWithBoost(streamId, claimableAmount);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        
+        // Should receive both principal and boost
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, claimableAmount + boostAmount);
+
+        // Verify boost was tracked
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.claimedBoostAmount, boostAmount);
+    }
+
+    function testClaimBoostOnly() public {
+        string memory streamId = "boost_only_test";
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Fast forward to generate boost
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+
+        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
+        assertTrue(boostAmount > 0);
+
+        uint256 recipientBalanceBefore = token.balanceOf(recipient);
+
+        // Claim only boost
+        vm.prank(recipient);
+        streamBoost.claimBoostOnly(streamId);
+
+        uint256 recipientBalanceAfter = token.balanceOf(recipient);
+        assertEq(recipientBalanceAfter - recipientBalanceBefore, boostAmount);
+
+        // Principal should remain unchanged
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.claimedAmount, 0);
+        assertEq(stream.financials.claimedBoostAmount, boostAmount);
+    }
+
+    function testNonBoostedStreamHasNoBoostEarnings() public {
+        string memory streamId = "non_boost_test";
+        
+        // Create non-boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            false // not boosted
+        );
+        vm.stopPrank();
+
+        // Fast forward
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
+
+        // Should have no boost earnings
+        assertEq(streamBoost.getBoostEarnings(streamId), 0);
+        assertEq(streamBoost.getClaimableBoostAmount(streamId), 0);
+
+        // Claiming boost-only should fail
+        vm.expectRevert("Stream not boosted");
+        vm.prank(recipient);
+        streamBoost.claimBoostOnly(streamId);
+    }
+
+    function testBoostEarningsWithPausedStream() public {
+        string memory streamId = "paused_boost_test";
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Let it run for 10 days
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+
+        uint256 boostBeforePause = streamBoost.getBoostEarnings(streamId);
+
+        // Pause the stream
+        vm.prank(sender);
+        streamBoost.pauseStream(streamId);
+
+        // Fast forward another 10 days while paused
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 20 days);
+
+        // Boost earnings should not increase while paused
+        uint256 boostAfterPause = streamBoost.getBoostEarnings(streamId);
+        assertEq(boostAfterPause, boostBeforePause);
+    }
+
+    function testBoostClaimEvents() public {
+        string memory streamId = "event_test";
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Generate some boost
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
+
+        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
+        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
+
+        // Test BoostClaimed event
+        vm.expectEmit(true, false, false, true);
+        emit StreamBoost.BoostClaimed(streamId, boostAmount);
+        
+        vm.prank(recipient);
+        streamBoost.claimStreamWithBoost(streamId, claimableAmount);
+    }
+
+    function testBoostAPRUpdate() public {
+        string memory streamId = "apr_update_test";
+        
+        // Create boosted stream
+        vm.startPrank(sender);
+        token.approve(address(streamBoost), STREAM_AMOUNT);
+        streamBoost.createStream(
+            streamId,
+            recipient,
+            address(token),
+            STREAM_AMOUNT,
+            30 days,
+            0,
+            true
+        );
+        vm.stopPrank();
+
+        // Let it accumulate some boost at 7.2%
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
+
+        uint256 boostAt720 = streamBoost.getBoostEarnings(streamId);
+
+        // Update APR to 10%
+        vm.prank(owner);
+        streamBoost.mockUpdateStreamBoostAPR(streamId, 1000);
+
+        // Continue for another 10 days at higher APR
+        vm.prank(owner);
+        streamBoost.mockSetTimestamp(block.timestamp + 20 days);
+
+        uint256 boostAt1000 = streamBoost.getBoostEarnings(streamId);
+        
+        // New boost should be higher than old (though calculation is complex due to averaging)
+        assertTrue(boostAt1000 > boostAt720);
+        
+        // Verify APR was updated
+        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
+        assertEq(stream.financials.boostAPR, 1000);
     }
 }

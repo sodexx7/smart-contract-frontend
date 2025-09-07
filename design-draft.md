@@ -4,7 +4,38 @@ This document captures the latest conversation output: a focused mock specificat
 
 ---
 
-## 1. Clear Workflow (User → Contract Sequence)
+## 1. Sender-Recipient Relationship Model
+
+### Stream Configuration & Token Support
+
+**One-to-One Relationship**: Each stream establishes a direct one-to-one relationship between a single sender and a single recipient. The current design enforces this constraint at the smart contract level where:
+
+- Each stream (`Stream` struct) contains exactly one `sender` address and one `recipient` address
+- A sender can create multiple streams to different recipients, but each individual stream targets only one recipient
+- Each stream is configured for a single ERC-20 token (specified via the `token` address field)
+
+**Token Specification**: When creating a stream, the sender must specify:
+- The exact token contract address (`_token` parameter in `createStream()`)
+- The total amount of that specific token to be streamed
+- Only one token type per stream (no multi-token streams in current design)
+
+### Access Rights & Control
+
+**Sender Rights**: The stream creator (sender) maintains control over stream lifecycle:
+- **Stop/Pause**: Only the sender can pause an active stream (`pauseStream()` - requires `msg.sender == stream.sender`)
+- **Resume**: Only the sender can resume a paused stream (`resumeStream()` - requires `msg.sender == stream.sender`)
+- **Stream Management**: Full control over stream state transitions (except claiming)
+
+**Recipient Rights**: The designated recipient has exclusive claiming privileges:
+- **Claim Rights**: Only the specific recipient can claim vested tokens (`claimStream()` - requires `msg.sender == stream.recipient`)
+- **No Control Rights**: Recipients cannot pause, resume, or modify stream parameters
+- **Exclusive Access**: No other address can claim tokens from the recipient's stream
+
+This model ensures clear ownership boundaries and prevents unauthorized access to either sender controls or recipient funds.
+
+---
+
+## 2. Clear Workflow (User → Contract Sequence)
 
 Primary user goal: Create and manage token streams that vest linearly (optionally with a cliff) while the locked principal auto‑earns a simulated yield.
 
