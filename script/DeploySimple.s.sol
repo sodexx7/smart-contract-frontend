@@ -24,9 +24,9 @@ contract DeploySimpleScript {
         btcToken = new MockERC20("Mock BTC", "mBTC", 8);
 
         // Set up mock asset data for different tokens
-        streamBoost.setMockAssetData("USDC", 1e18, 6, 400, 5); // Low volatility, stable
-        streamBoost.setMockAssetData("ETH", 3000e18, 18, 600, 25); // Medium volatility
-        streamBoost.setMockAssetData("BTC", 50000e18, 8, 800, 30); // High volatility
+        streamBoost.setMockAssetData("USDC", 1e18, 6); // Stable
+        streamBoost.setMockAssetData("ETH", 3000e18, 18); // Medium volatility
+        streamBoost.setMockAssetData("BTC", 50000e18, 8); // High volatility
 
         // Initialize protocol stats
         streamBoost.setMockProtocolStats(0, 0, 600, 45);
