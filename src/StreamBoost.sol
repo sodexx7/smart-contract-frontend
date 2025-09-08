@@ -25,11 +25,6 @@ contract StreamBoost is Ownable {
     struct StreamFinancials {
         uint256 totalAmount;
         uint256 claimedAmount;
-        bool boosted;
-        uint256 boostAPR;
-        uint256 penaltiesAccrued;
-        uint256 totalBoostEarned;
-        uint256 claimedBoostAmount;
     }
 
     struct Stream {
@@ -42,6 +37,7 @@ contract StreamBoost is Ownable {
         StreamStatus status;
     }
 
+    // @audit make sense the ProtocolStats
     struct ProtocolStats {
         uint256 totalValueLocked;
         uint256 totalActiveStreams;
@@ -50,12 +46,11 @@ contract StreamBoost is Ownable {
         uint256 lastUpdated;
     }
 
+    // @audit make sense the AssetState
     struct AssetState {
         string symbol;
         uint256 price;
         uint8 decimals;
-        uint256 yieldBoostBaseAPR;
-        uint256 volatilityScore;
         uint256 lastUpdated;
     }
 
@@ -76,17 +71,9 @@ contract StreamBoost is Ownable {
         address indexed recipient
     );
     event StreamClaimed(string indexed streamId, uint256 amount);
-    event BoostClaimed(string indexed streamId, uint256 boostAmount);
     event StreamPaused(string indexed streamId);
     event StreamResumed(string indexed streamId);
     event StreamCancelled(string indexed streamId);
-    event StreamTerminated(
-        string indexed streamId, 
-        address indexed terminator,
-        uint256 penaltyAmount,
-        uint256 remainingAmount
-    );
-    event PenaltyApplied(string indexed streamId, uint256 penaltyAmount);
 
     constructor() Ownable(msg.sender) {
         protocolStats.lastUpdated = getCurrentTimestamp();
@@ -98,14 +85,16 @@ contract StreamBoost is Ownable {
         address _token,
         uint256 _totalAmount,
         uint256 _duration,
-        uint256 _cliffDuration,
-        bool _boosted
+        uint256 _cliffDuration
     ) external {
         require(bytes(_id).length > 0, "Invalid stream ID");
         require(_recipient != address(0), "Invalid recipient");
         require(_totalAmount > 0, "Invalid amount");
         require(_duration > 0, "Invalid duration");
-        require(_cliffDuration <= _duration, "Cliff cannot exceed stream duration");
+        require(
+            _cliffDuration <= _duration,
+            "Cliff cannot exceed stream duration"
+        );
         require(bytes(streams[_id].id).length == 0, "Stream already exists");
 
         IERC20(_token).transferFrom(msg.sender, address(this), _totalAmount);
@@ -128,12 +117,7 @@ contract StreamBoost is Ownable {
             }),
             financials: StreamFinancials({
                 totalAmount: _totalAmount,
-                claimedAmount: 0,
-                boosted: _boosted,
-                boostAPR: _boosted ? 720 : 0,
-                penaltiesAccrued: 0,
-                totalBoostEarned: 0,
-                claimedBoostAmount: 0
+                claimedAmount: 0
             }),
             status: StreamStatus.ACTIVE
         });
@@ -158,11 +142,6 @@ contract StreamBoost is Ownable {
         uint256 claimableAmount = getClaimableAmount(_streamId);
         require(_amount <= claimableAmount, "Amount exceeds claimable");
 
-        // Update boost earnings before claim
-        if (stream.financials.boosted) {
-            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
-        }
-
         stream.financials.claimedAmount += _amount;
         IERC20(stream.token).transfer(stream.recipient, _amount);
 
@@ -175,103 +154,48 @@ contract StreamBoost is Ownable {
         emit StreamClaimed(_streamId, _amount);
     }
 
-    function claimStreamWithBoost(
-        string memory _streamId,
-        uint256 _amount
-    ) external {
-        Stream storage stream = streams[_streamId];
-        require(bytes(stream.id).length > 0, "Stream not found");
-        require(msg.sender == stream.recipient, "Not recipient");
-        require(stream.status == StreamStatus.ACTIVE, "Stream not active");
-        require(stream.financials.boosted, "Stream not boosted");
-
-        uint256 claimableAmount = getClaimableAmount(_streamId);
-        require(_amount <= claimableAmount, "Amount exceeds claimable");
-
-        // Update and claim boost earnings
-        uint256 totalBoostEarned = getBoostEarnings(_streamId);
-        stream.financials.totalBoostEarned = totalBoostEarned;
-
-        uint256 claimableBoost = totalBoostEarned -
-            stream.financials.claimedBoostAmount;
-
-        // Claim principal
-        stream.financials.claimedAmount += _amount;
-        IERC20(stream.token).transfer(stream.recipient, _amount);
-
-        // Claim boost rewards if any
-        if (claimableBoost > 0) {
-            stream.financials.claimedBoostAmount += claimableBoost;
-            // For simplicity, boost rewards are paid in the same token
-            // In production, this might require a separate reward token or minting
-            IERC20(stream.token).transfer(stream.recipient, claimableBoost);
-            emit BoostClaimed(_streamId, claimableBoost);
-        }
-
-        if (stream.financials.claimedAmount >= stream.financials.totalAmount) {
-            stream.status = StreamStatus.COMPLETED;
-            protocolStats.totalActiveStreams--;
-        }
-
-        protocolStats.lastUpdated = getCurrentTimestamp();
-        emit StreamClaimed(_streamId, _amount);
-    }
-
-    function claimBoostOnly(string memory _streamId) external {
-        Stream storage stream = streams[_streamId];
-        require(bytes(stream.id).length > 0, "Stream not found");
-        require(msg.sender == stream.recipient, "Not recipient");
-        require(stream.status == StreamStatus.ACTIVE, "Stream not active");
-        require(stream.financials.boosted, "Stream not boosted");
-
-        uint256 claimableBoost = getClaimableBoostAmount(_streamId);
-        require(claimableBoost > 0, "No boost rewards to claim");
-
-        // Update boost earnings and claim
-        stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
-        stream.financials.claimedBoostAmount += claimableBoost;
-
-        IERC20(stream.token).transfer(stream.recipient, claimableBoost);
-        protocolStats.lastUpdated = getCurrentTimestamp();
-
-        emit BoostClaimed(_streamId, claimableBoost);
-    }
-
-    function canClaimDuringCliff(string memory _streamId) public view returns (bool canClaimPrincipal, bool canClaimBoost) {
+    // @audit should check the cliff logci
+    function canClaimDuringCliff(
+        string memory _streamId
+    ) public view returns (bool canClaimPrincipal) {
         Stream memory stream = streams[_streamId];
-        
+
         if (bytes(stream.id).length == 0) {
-            return (false, false);
+            return false;
         }
 
         uint256 currentTime = getCurrentTimestamp();
-        bool cliffActive = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
-        
+        bool cliffActive = stream.timing.cliffTime > 0 &&
+            currentTime < stream.timing.cliffTime;
+
         // Principal can only be claimed after cliff
         canClaimPrincipal = !cliffActive;
-        
-        // Boost can always be claimed if stream is boosted (even during cliff)
-        canClaimBoost = stream.financials.boosted;
     }
 
-    function getCliffInfo(string memory _streamId) public view returns (
-        uint256 cliffTime,
-        uint256 timeUntilCliff,
-        bool hasCliff,
-        bool cliffPassed
-    ) {
+    function getCliffInfo(
+        string memory _streamId
+    )
+        public
+        view
+        returns (
+            uint256 cliffTime,
+            uint256 timeUntilCliff,
+            bool hasCliff,
+            bool cliffPassed
+        )
+    {
         Stream memory stream = streams[_streamId];
-        
+
         cliffTime = stream.timing.cliffTime;
         hasCliff = cliffTime > 0;
-        
+
         if (!hasCliff) {
             return (0, 0, false, true);
         }
 
         uint256 currentTime = getCurrentTimestamp();
         cliffPassed = currentTime >= cliffTime;
-        
+
         if (!cliffPassed && currentTime < cliffTime) {
             timeUntilCliff = cliffTime - currentTime;
         } else {
@@ -279,71 +203,11 @@ contract StreamBoost is Ownable {
         }
     }
 
-    function terminateStream(string memory _streamId) external {
-        Stream storage stream = streams[_streamId];
-        require(bytes(stream.id).length > 0, "Stream not found");
-        require(
-            msg.sender == stream.sender || msg.sender == stream.recipient,
-            "Only sender or recipient can terminate"
-        );
-        require(
-            stream.status == StreamStatus.ACTIVE || stream.status == StreamStatus.PAUSED,
-            "Stream not active or paused"
-        );
-
-        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
-        require(remainingAmount > 0, "No remaining amount to terminate");
-
-        // Calculate penalty
-        uint256 penaltyAmount = calculateEarlyTerminationPenalty(_streamId);
-        uint256 transferAmount = remainingAmount - penaltyAmount;
-
-        // Update boost earnings before termination
-        if (stream.financials.boosted) {
-            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
-        }
-
-        // Apply penalty
-        stream.financials.penaltiesAccrued = penaltyAmount;
-        stream.financials.claimedAmount = stream.financials.totalAmount;
-        
-        // Mark stream as cancelled
-        stream.status = StreamStatus.CANCELLED;
-        protocolStats.totalActiveStreams--;
-
-        // Transfer remaining amount to recipient (after penalty)
-        if (transferAmount > 0) {
-            IERC20(stream.token).transfer(stream.recipient, transferAmount);
-        }
-
-        // Transfer any unclaimed boost rewards
-        if (stream.financials.boosted) {
-            uint256 claimableBoost = stream.financials.totalBoostEarned - stream.financials.claimedBoostAmount;
-            if (claimableBoost > 0) {
-                stream.financials.claimedBoostAmount += claimableBoost;
-                IERC20(stream.token).transfer(stream.recipient, claimableBoost);
-                emit BoostClaimed(_streamId, claimableBoost);
-            }
-        }
-
-        protocolStats.lastUpdated = getCurrentTimestamp();
-        
-        if (penaltyAmount > 0) {
-            emit PenaltyApplied(_streamId, penaltyAmount);
-        }
-        emit StreamTerminated(_streamId, msg.sender, penaltyAmount, transferAmount);
-    }
-
     function pauseStream(string memory _streamId) external {
         Stream storage stream = streams[_streamId];
         require(bytes(stream.id).length > 0, "Stream not found");
         require(msg.sender == stream.sender, "Not sender");
         require(stream.status == StreamStatus.ACTIVE, "Stream not active");
-
-        // Store boost earnings up to pause point
-        if (stream.financials.boosted) {
-            stream.financials.totalBoostEarned = getBoostEarnings(_streamId);
-        }
 
         stream.status = StreamStatus.PAUSED;
         stream.timing.pausedAt = getCurrentTimestamp();
@@ -368,7 +232,6 @@ contract StreamBoost is Ownable {
         emit StreamResumed(_streamId);
     }
 
-    // @audit not pointing which token?
     function getVestedAmount(
         string memory _streamId
     ) public view returns (uint256) {
@@ -414,66 +277,6 @@ contract StreamBoost is Ownable {
                 : 0;
     }
 
-    function getBoostEarnings(
-        string memory _streamId
-    ) public view returns (uint256) {
-        Stream memory stream = streams[_streamId];
-        if (!stream.financials.boosted || stream.financials.boostAPR == 0) {
-            return 0;
-        }
-
-        if (stream.status == StreamStatus.PAUSED) {
-            return stream.financials.totalBoostEarned;
-        }
-        if (stream.status == StreamStatus.CANCELLED) {
-            return stream.financials.totalBoostEarned;
-        }
-
-        // Calculate time for boost calculation
-        uint256 startTime = stream.timing.startTime;
-        uint256 endTime = stream.timing.endTime;
-        uint256 currentTime = getCurrentTimestamp();
-
-        // Handle time bounds
-        uint256 effectiveEndTime = currentTime > endTime
-            ? endTime
-            : currentTime;
-        if (currentTime < startTime) {
-            return 0;
-        }
-
-        // Calculate elapsed time for yield generation
-        uint256 elapsedTime = effectiveEndTime - startTime;
-
-        // Calculate average unclaimed principal over time
-        // Simplified linear decay: starts at totalAmount, ends at currentUnclaimed
-        uint256 currentUnclaimed = stream.financials.totalAmount -
-            stream.financials.claimedAmount;
-        uint256 avgUnclaimed = (stream.financials.totalAmount +
-            currentUnclaimed) / 2;
-
-        // Annual yield calculation: principal * APR * time / year
-        // boostAPR is in basis points (720 = 7.2%)
-        uint256 yearInSeconds = 365 days;
-        uint256 boostEarnings = (avgUnclaimed *
-            stream.financials.boostAPR *
-            elapsedTime) / (10000 * yearInSeconds);
-
-        return boostEarnings;
-    }
-
-    function getClaimableBoostAmount(
-        string memory _streamId
-    ) public view returns (uint256) {
-        uint256 totalBoostEarned = getBoostEarnings(_streamId);
-        Stream memory stream = streams[_streamId];
-
-        return
-            totalBoostEarned > stream.financials.claimedBoostAmount
-                ? totalBoostEarned - stream.financials.claimedBoostAmount
-                : 0;
-    }
-
     function getStreamProgress(
         string memory _streamId
     ) public view returns (uint256) {
@@ -491,9 +294,11 @@ contract StreamBoost is Ownable {
         if (stream.financials.totalAmount == 0) return 0;
 
         uint256 currentTime = getCurrentTimestamp();
-        
+
         // Before cliff: progress is 0 from claiming perspective
-        if (stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime) {
+        if (
+            stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime
+        ) {
             return 0;
         }
 
@@ -506,14 +311,15 @@ contract StreamBoost is Ownable {
         string memory _streamId
     ) public view returns (uint256 cliffProgress, bool cliffPassed) {
         Stream memory stream = streams[_streamId];
-        
+
         if (stream.timing.cliffTime == 0) {
             return (100, true); // No cliff means 100% cliff progress
         }
 
         uint256 currentTime = getCurrentTimestamp();
-        uint256 cliffDuration = stream.timing.cliffTime - stream.timing.startTime;
-        
+        uint256 cliffDuration = stream.timing.cliffTime -
+            stream.timing.startTime;
+
         if (currentTime >= stream.timing.cliffTime) {
             return (100, true); // Cliff passed
         }
@@ -525,82 +331,6 @@ contract StreamBoost is Ownable {
         uint256 cliffElapsed = currentTime - stream.timing.startTime;
         cliffProgress = (cliffElapsed * 100) / cliffDuration;
         cliffPassed = false;
-    }
-
-    function calculateEarlyTerminationPenalty(
-        string memory _streamId
-    ) public view returns (uint256) {
-        Stream memory stream = streams[_streamId];
-        if (bytes(stream.id).length == 0) {
-            return 0;
-        }
-
-        // Can only calculate penalties for active or paused streams
-        if (stream.status != StreamStatus.ACTIVE && stream.status != StreamStatus.PAUSED) {
-            return 0;
-        }
-
-        uint256 progress = getStreamProgress(_streamId);
-        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
-        
-        if (remainingAmount == 0) {
-            return 0;
-        }
-
-        // Check if we're in cliff period - higher penalties during cliff
-        uint256 currentTime = getCurrentTimestamp();
-        bool inCliffPeriod = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
-
-        // Time-based penalty rates (in basis points)
-        uint256 penaltyRate;
-        
-        if (inCliffPeriod) {
-            // Higher penalties during cliff period (25% base penalty)
-            penaltyRate = 2500; // 25%
-        } else if (progress < 25) {
-            penaltyRate = 2000; // 20%
-        } else if (progress < 50) {
-            penaltyRate = 1500; // 15%
-        } else if (progress < 75) {
-            penaltyRate = 1000; // 10%
-        } else if (progress < 90) {
-            penaltyRate = 500;  // 5%
-        } else {
-            penaltyRate = 200;  // 2%
-        }
-
-        return (remainingAmount * penaltyRate) / 10000;
-    }
-
-    function getPenaltyInfo(
-        string memory _streamId
-    ) public view returns (uint256 penaltyAmount, uint256 remainingAfterPenalty, uint256 penaltyRate) {
-        penaltyAmount = calculateEarlyTerminationPenalty(_streamId);
-        
-        Stream memory stream = streams[_streamId];
-        uint256 remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount;
-        remainingAfterPenalty = remainingAmount > penaltyAmount ? remainingAmount - penaltyAmount : 0;
-        
-        // Check if we're in cliff period
-        uint256 currentTime = getCurrentTimestamp();
-        bool inCliffPeriod = stream.timing.cliffTime > 0 && currentTime < stream.timing.cliffTime;
-        
-        if (inCliffPeriod) {
-            penaltyRate = 2500; // 25% during cliff
-        } else {
-            uint256 progress = getStreamProgress(_streamId);
-            if (progress < 25) {
-                penaltyRate = 2000; // 20%
-            } else if (progress < 50) {
-                penaltyRate = 1500; // 15%
-            } else if (progress < 75) {
-                penaltyRate = 1000; // 10%
-            } else if (progress < 90) {
-                penaltyRate = 500;  // 5%
-            } else {
-                penaltyRate = 200;  // 2%
-            }
-        }
     }
 
     function getUserOutgoingStreams(
@@ -618,16 +348,12 @@ contract StreamBoost is Ownable {
     function setMockAssetData(
         string memory _symbol,
         uint256 _price,
-        uint8 _decimals,
-        uint256 _yieldBoostBaseAPR,
-        uint256 _volatilityScore
+        uint8 _decimals
     ) external onlyOwner {
         assets[_symbol] = AssetState({
             symbol: _symbol,
             price: _price,
             decimals: _decimals,
-            yieldBoostBaseAPR: _yieldBoostBaseAPR,
-            volatilityScore: _volatilityScore,
             lastUpdated: getCurrentTimestamp()
         });
     }
@@ -645,14 +371,6 @@ contract StreamBoost is Ownable {
         protocolStats.lastUpdated = getCurrentTimestamp();
     }
 
-    function mockUpdateStreamBoostAPR(
-        string memory _streamId,
-        uint256 _newAPR
-    ) external onlyOwner {
-        require(bytes(streams[_streamId].id).length > 0, "Stream not found");
-        streams[_streamId].financials.boostAPR = _newAPR;
-    }
-
     function mockSimulateStreamFailure(
         string memory _streamId
     ) external onlyOwner {
@@ -663,23 +381,19 @@ contract StreamBoost is Ownable {
         emit StreamCancelled(_streamId);
     }
 
-    function mockApplyPenalty(
-        string memory _streamId,
-        uint256 _penaltyAmount
-    ) external onlyOwner {
-        require(bytes(streams[_streamId].id).length > 0, "Stream not found");
-        streams[_streamId].financials.penaltiesAccrued += _penaltyAmount;
-        protocolStats.lastUpdated = getCurrentTimestamp();
-        emit PenaltyApplied(_streamId, _penaltyAmount);
-    }
-
     function mockSetCliffTime(
         string memory _streamId,
         uint256 _newCliffTime
     ) external onlyOwner {
         require(bytes(streams[_streamId].id).length > 0, "Stream not found");
-        require(_newCliffTime <= streams[_streamId].timing.endTime, "Cliff cannot exceed stream end");
-        require(_newCliffTime >= streams[_streamId].timing.startTime, "Cliff cannot be before stream start");
+        require(
+            _newCliffTime <= streams[_streamId].timing.endTime,
+            "Cliff cannot exceed stream end"
+        );
+        require(
+            _newCliffTime >= streams[_streamId].timing.startTime,
+            "Cliff cannot be before stream start"
+        );
         streams[_streamId].timing.cliffTime = _newCliffTime;
         protocolStats.lastUpdated = getCurrentTimestamp();
     }
@@ -692,7 +406,10 @@ contract StreamBoost is Ownable {
             return (false, "Cliff duration exceeds stream duration");
         }
         if (_cliffDuration == _duration) {
-            return (false, "Cliff duration equals stream duration - no claimable period");
+            return (
+                false,
+                "Cliff duration equals stream duration - no claimable period"
+            );
         }
         if (_duration > 0 && _cliffDuration > 0 && _cliffDuration < 3600) {
             return (false, "Cliff duration too short (minimum 1 hour)");

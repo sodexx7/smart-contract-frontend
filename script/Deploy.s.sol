@@ -9,8 +9,6 @@ contract DeployScript is Script {
     StreamBoost public streamBoost;
     MockERC20 public mockToken;
 
-    function setUp() public {}
-
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("USER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
@@ -29,7 +27,9 @@ contract DeployScript is Script {
         console.log("MockERC20 deployed at:", address(mockToken));
 
         // Set up some initial mock data
-        streamBoost.setMockAssetData("USDC", 1e18, 6, 500, 10);
+        // Configure mock data for USDC asset: symbol, price in wei (1e18 = $1), decimals, supply rate, borrow rate
+        streamBoost.setMockAssetData("USDC", 1e18, 6);
+        // Set initial protocol statistics: total supplied, total borrowed, total value locked, total reserves
         streamBoost.setMockProtocolStats(0, 0, 500, 30);
 
         console.log("Initial mock data configured");

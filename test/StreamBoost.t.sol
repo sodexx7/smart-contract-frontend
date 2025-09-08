@@ -45,16 +45,13 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0, // no cliff
-            true // boosted
+            0 // no cliff
         );
         vm.stopPrank();
 
         // Verify stream creation
         // Verify stream creation using getStream
         StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertTrue(stream.financials.boosted);
-        assertEq(stream.financials.boostAPR, 720); // 7.2%
         assertEq(stream.financials.claimedAmount, 0);
         assertEq(stream.timing.pausedAt, 0);
         assertTrue(stream.status == StreamBoost.StreamStatus.ACTIVE);
@@ -96,16 +93,13 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            cliffDuration,
-            false // not boosted
+            cliffDuration
         );
         vm.stopPrank();
 
         StreamBoost.Stream memory cliffStream = streamBoost.getStream(streamId);
         assertEq(cliffStream.timing.cliffTime, block.timestamp + cliffDuration);
         assertEq(cliffStream.timing.endTime, block.timestamp + STREAM_DURATION);
-        assertTrue(!cliffStream.financials.boosted);
-        assertEq(cliffStream.financials.boostAPR, 0);
     }
 
     // Main Flow 4: Monitor Stream Progress
@@ -121,8 +115,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         vm.stopPrank();
 
@@ -173,8 +166,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         vm.stopPrank();
 
@@ -234,8 +226,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         vm.stopPrank();
 
@@ -274,8 +265,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         vm.stopPrank();
 
@@ -347,8 +337,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            cliffDuration,
-            false
+            cliffDuration
         );
         vm.stopPrank();
 
@@ -390,8 +379,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            false
+            0
         );
         vm.stopPrank();
 
@@ -404,8 +392,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            false
+            0
         );
         vm.stopPrank();
 
@@ -419,8 +406,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            false
+            0
         );
         vm.stopPrank();
 
@@ -465,7 +451,7 @@ contract StreamBoostTest is Test {
     function testMockFunctions() public {
         // Test mock asset data
         vm.prank(owner);
-        streamBoost.setMockAssetData("USDC", 1e18, 6, 500, 10);
+        streamBoost.setMockAssetData("USDC", 1e18, 6);
 
         // Test asset state - just verify it was set
         StreamBoost.AssetState memory assetState = streamBoost.getAsset("USDC");
@@ -491,20 +477,10 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         vm.stopPrank();
 
-        // Mock update boost APR
-        vm.prank(owner);
-        streamBoost.mockUpdateStreamBoostAPR(streamId, 800);
-
-        StreamBoost.Stream memory boostedStream = streamBoost.getStream(
-            streamId
-        );
-        assertTrue(boostedStream.financials.boosted);
-        assertEq(boostedStream.financials.boostAPR, 800);
 
         // Mock simulate failure
         vm.prank(owner);
@@ -527,7 +503,7 @@ contract StreamBoostTest is Test {
             )
         );
         vm.prank(sender);
-        streamBoost.setMockAssetData("USDC", 1e18, 6, 500, 10);
+        streamBoost.setMockAssetData("USDC", 1e18, 6);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -554,8 +530,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            true
+            0
         );
         streamBoost.createStream(
             streamId2,
@@ -563,8 +538,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION / 2,
-            0,
-            false
+            0
         );
         vm.stopPrank();
 
@@ -605,8 +579,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             STREAM_DURATION,
-            0,
-            false
+            0
         );
         vm.stopPrank();
 
@@ -639,698 +612,6 @@ contract StreamBoostTest is Test {
         assertEq(streamBoost.getVestedAmount(streamId), 0);
     }
 
-    // === BOOST FUNCTIONALITY TESTS ===
-
-    function testBoostEarningsCalculation() public {
-        string memory streamId = "boost_test_1";
-        uint256 streamAmount = 10000e18; // 10,000 tokens
-        uint256 streamDuration = 365 days; // 1 year
-        
-        // Create boosted stream with 7.2% APR
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), streamAmount);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            streamAmount,
-            streamDuration,
-            0, // no cliff
-            true // boosted
-        );
-        vm.stopPrank();
-
-        // Verify boost is enabled
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertTrue(stream.financials.boosted);
-        assertEq(stream.financials.boostAPR, 720); // 7.2%
-
-        // Initially no boost earnings (just started)
-        assertEq(streamBoost.getBoostEarnings(streamId), 0);
-        assertEq(streamBoost.getClaimableBoostAmount(streamId), 0);
-
-        // Fast forward 6 months (half year)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 182 days);
-
-        // Calculate expected boost earnings after 6 months
-        // Average unclaimed ≈ (10000 + 10000) / 2 = 10000 tokens (no claims yet)
-        // Expected: 10000 * 0.072 * 0.5 = 360 tokens
-        uint256 boostEarnings = streamBoost.getBoostEarnings(streamId);
-        assertTrue(boostEarnings > 300e18 && boostEarnings < 400e18); // Allow some variance
-
-        // Fast forward to full year
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 365 days);
-
-        uint256 fullYearBoost = streamBoost.getBoostEarnings(streamId);
-        // Expected around 360-720 tokens (depends on average principal)
-        assertTrue(fullYearBoost > 300e18);
-        assertTrue(fullYearBoost < 800e18);
-    }
-
-    function testClaimStreamWithBoost() public {
-        string memory streamId = "boost_claim_test";
-        uint256 streamAmount = 1000e18;
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), streamAmount);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            streamAmount,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Fast forward to 50% completion
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
-
-        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
-        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
-        
-        assertTrue(claimableAmount > 0);
-        assertTrue(boostAmount > 0);
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        // Claim with boost
-        vm.prank(recipient);
-        streamBoost.claimStreamWithBoost(streamId, claimableAmount);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Should receive both principal and boost
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, claimableAmount + boostAmount);
-
-        // Verify boost was tracked
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.claimedBoostAmount, boostAmount);
-    }
-
-    function testClaimBoostOnly() public {
-        string memory streamId = "boost_only_test";
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Fast forward to generate boost
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
-
-        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
-        assertTrue(boostAmount > 0);
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        // Claim only boost
-        vm.prank(recipient);
-        streamBoost.claimBoostOnly(streamId);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, boostAmount);
-
-        // Principal should remain unchanged
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.claimedAmount, 0);
-        assertEq(stream.financials.claimedBoostAmount, boostAmount);
-    }
-
-    function testNonBoostedStreamHasNoBoostEarnings() public {
-        string memory streamId = "non_boost_test";
-        
-        // Create non-boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false // not boosted
-        );
-        vm.stopPrank();
-
-        // Fast forward
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
-
-        // Should have no boost earnings
-        assertEq(streamBoost.getBoostEarnings(streamId), 0);
-        assertEq(streamBoost.getClaimableBoostAmount(streamId), 0);
-
-        // Claiming boost-only should fail
-        vm.expectRevert("Stream not boosted");
-        vm.prank(recipient);
-        streamBoost.claimBoostOnly(streamId);
-    }
-
-    function testBoostEarningsWithPausedStream() public {
-        string memory streamId = "paused_boost_test";
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Let it run for 10 days
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
-
-        uint256 boostBeforePause = streamBoost.getBoostEarnings(streamId);
-
-        // Pause the stream
-        vm.prank(sender);
-        streamBoost.pauseStream(streamId);
-
-        // Fast forward another 10 days while paused
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 20 days);
-
-        // Boost earnings should not increase while paused
-        uint256 boostAfterPause = streamBoost.getBoostEarnings(streamId);
-        assertEq(boostAfterPause, boostBeforePause);
-    }
-
-    function testBoostClaimEvents() public {
-        string memory streamId = "event_test";
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Generate some boost
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
-
-        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
-        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
-
-        // Test BoostClaimed event
-        vm.expectEmit(true, false, false, true);
-        emit StreamBoost.BoostClaimed(streamId, boostAmount);
-        
-        vm.prank(recipient);
-        streamBoost.claimStreamWithBoost(streamId, claimableAmount);
-    }
-
-    function testBoostAPRUpdate() public {
-        string memory streamId = "apr_update_test";
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Let it accumulate some boost at 7.2%
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
-
-        uint256 boostAt720 = streamBoost.getBoostEarnings(streamId);
-
-        // Update APR to 10%
-        vm.prank(owner);
-        streamBoost.mockUpdateStreamBoostAPR(streamId, 1000);
-
-        // Continue for another 10 days at higher APR
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 20 days);
-
-        uint256 boostAt1000 = streamBoost.getBoostEarnings(streamId);
-        
-        // New boost should be higher than old (though calculation is complex due to averaging)
-        assertTrue(boostAt1000 > boostAt720);
-        
-        // Verify APR was updated
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.boostAPR, 1000);
-    }
-
-    // === PENALTY FUNCTIONALITY TESTS ===
-
-    function testPenaltyCalculationAtDifferentProgress() public {
-        string memory streamId = "penalty_progress_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Test 0% progress (20% penalty)
-        uint256 penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        assertEq(penalty, STREAM_AMOUNT * 20 / 100); // 20% penalty
-
-        // Test 25% progress (15% penalty)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 7 days + 12 hours);
-        
-        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        // At 25% progress but no claims made, penalty is 15% of full amount
-        assertEq(penalty, STREAM_AMOUNT * 15 / 100); // 15% penalty on full amount
-
-        // Test 50% progress (10% penalty)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
-        
-        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        // At 50% progress but no claims made, penalty is 10% of full amount
-        assertEq(penalty, STREAM_AMOUNT * 10 / 100); // 10% penalty on full amount
-
-        // Test 75% progress (5% penalty)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 22 days + 12 hours);
-        
-        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        // At 75% progress but no claims made, penalty is 5% of full amount
-        assertEq(penalty, STREAM_AMOUNT * 5 / 100); // 5% penalty on full amount
-
-        // Test 90% progress (2% penalty)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 27 days);
-        
-        penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        // At 90% progress but no claims made, penalty is 2% of full amount
-        assertEq(penalty, STREAM_AMOUNT * 2 / 100); // 2% penalty on full amount
-    }
-
-    function testTerminateStreamBySender() public {
-        string memory streamId = "terminate_sender_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to 30% progress
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 9 days);
-
-        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
-        uint256 expectedPenalty = remainingAmount * 15 / 100; // 15% penalty on full amount
-        uint256 expectedTransfer = remainingAmount - expectedPenalty;
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        // Terminate by sender
-        vm.expectEmit(true, true, false, true);
-        emit StreamBoost.StreamTerminated(streamId, sender, expectedPenalty, expectedTransfer);
-        
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Verify recipient received expected amount
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
-
-        // Verify stream state
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
-        assertEq(stream.financials.claimedAmount, STREAM_AMOUNT);
-        assertTrue(stream.status == StreamBoost.StreamStatus.CANCELLED);
-    }
-
-    function testTerminateStreamByRecipient() public {
-        string memory streamId = "terminate_recipient_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to 60% progress
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 18 days);
-
-        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
-        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty on full amount
-        uint256 expectedTransfer = remainingAmount - expectedPenalty;
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        // Terminate by recipient
-        vm.expectEmit(true, true, false, true);
-        emit StreamBoost.StreamTerminated(streamId, recipient, expectedPenalty, expectedTransfer);
-        
-        vm.prank(recipient);
-        streamBoost.terminateStream(streamId);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Verify recipient received expected amount
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
-
-        // Verify penalty was applied
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
-    }
-
-    function testTerminateStreamWithBoostRewards() public {
-        string memory streamId = "terminate_boost_test";
-        
-        // Create boosted stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            true
-        );
-        vm.stopPrank();
-
-        // Fast forward to 40% progress
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 12 days);
-
-        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
-        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
-        uint256 expectedPenalty = remainingAmount * 15 / 100; // 15% penalty on full amount
-        uint256 expectedTransfer = remainingAmount - expectedPenalty;
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        // Terminate stream
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Should receive principal (after penalty) + boost rewards
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer + boostAmount);
-
-        // Verify boost was claimed
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.claimedBoostAmount, boostAmount);
-    }
-
-    function testTerminateStreamAfterPartialClaim() public {
-        string memory streamId = "terminate_partial_claim_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to 50% progress
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 15 days);
-
-        // Claim 25% of total
-        uint256 claimAmount = STREAM_AMOUNT / 4;
-        vm.prank(recipient);
-        streamBoost.claimStream(streamId, claimAmount);
-
-        // Now terminate - should only penalize remaining amount
-        uint256 remainingAmount = STREAM_AMOUNT - claimAmount; // 75% - 25% = 50% remaining
-        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty on remaining
-        uint256 expectedTransfer = remainingAmount - expectedPenalty;
-
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Verify correct amount transferred
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
-
-        // Verify penalty calculation
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
-        assertEq(stream.financials.claimedAmount, STREAM_AMOUNT);
-    }
-
-    function testCannotTerminateCompletedStream() public {
-        string memory streamId = "terminate_completed_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to completion
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 30 days);
-
-        // Claim all
-        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
-        vm.prank(recipient);
-        streamBoost.claimStream(streamId, claimableAmount);
-
-        // Try to terminate completed stream
-        vm.expectRevert("Stream not active or paused");
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-    }
-
-    function testUnauthorizedTermination() public {
-        string memory streamId = "unauthorized_terminate_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Try to terminate by unauthorized user
-        address unauthorized = address(0x999);
-        vm.expectRevert("Only sender or recipient can terminate");
-        vm.prank(unauthorized);
-        streamBoost.terminateStream(streamId);
-    }
-
-    function testTerminatePausedStream() public {
-        string memory streamId = "terminate_paused_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward and pause
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 10 days);
-        
-        vm.prank(sender);
-        streamBoost.pauseStream(streamId);
-
-        // Should be able to terminate paused stream
-        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
-        uint256 expectedPenalty = remainingAmount * 20 / 100; // 20% penalty (33% progress = first bracket)
-
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
-        assertTrue(stream.status == StreamBoost.StreamStatus.CANCELLED);
-    }
-
-    function testPenaltyInfoFunction() public {
-        string memory streamId = "penalty_info_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to 60% progress
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 18 days);
-
-        (uint256 penaltyAmount, uint256 remainingAfterPenalty, uint256 penaltyRate) = 
-            streamBoost.getPenaltyInfo(streamId);
-
-        uint256 remainingAmount = STREAM_AMOUNT; // No claims made yet, so full amount remaining
-        uint256 expectedPenalty = remainingAmount * 10 / 100; // 10% penalty
-        
-        assertEq(penaltyAmount, expectedPenalty);
-        assertEq(remainingAfterPenalty, remainingAmount - expectedPenalty);
-        assertEq(penaltyRate, 1000); // 10% in basis points
-    }
-
-    function testMockApplyPenalty() public {
-        string memory streamId = "mock_penalty_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        uint256 penaltyAmount = 1000e18;
-
-        // Apply mock penalty
-        vm.expectEmit(true, false, false, true);
-        emit StreamBoost.PenaltyApplied(streamId, penaltyAmount);
-        
-        vm.prank(owner);
-        streamBoost.mockApplyPenalty(streamId, penaltyAmount);
-
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, penaltyAmount);
-    }
-
-    function testNoPenaltyForCompletedStream() public {
-        string memory streamId = "no_penalty_completed_test";
-        
-        // Create stream
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            0,
-            false
-        );
-        vm.stopPrank();
-
-        // Complete the stream
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 30 days);
-
-        // Claim all to complete
-        uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
-        vm.prank(recipient);
-        streamBoost.claimStream(streamId, claimableAmount);
-
-        // Check penalty calculation returns 0 for completed stream
-        uint256 penalty = streamBoost.calculateEarlyTerminationPenalty(streamId);
-        assertEq(penalty, 0);
-    }
 
     // === COMPREHENSIVE CLIFF FUNCTIONALITY TESTS ===
 
@@ -1348,8 +629,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            31 days, // Cliff longer than duration
-            false
+            31 days // Cliff longer than duration
         );
         
         // Test valid cliff creation
@@ -1359,8 +639,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            7 days, // Valid cliff
-            false
+            7 days // Valid cliff
         );
         
         vm.stopPrank();
@@ -1382,8 +661,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            cliffDuration,
-            false
+            cliffDuration
         );
         vm.stopPrank();
 
@@ -1422,8 +700,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            7 days,
-            true // boosted
+            7 days
         );
         vm.stopPrank();
 
@@ -1432,61 +709,15 @@ contract StreamBoostTest is Test {
         streamBoost.mockSetTimestamp(block.timestamp + 5 days);
         
         // Check claim capabilities during cliff
-        (bool canClaimPrincipal, bool canClaimBoost) = streamBoost.canClaimDuringCliff(streamId);
+        bool canClaimPrincipal = streamBoost.canClaimDuringCliff(streamId);
         assertFalse(canClaimPrincipal); // Cannot claim principal during cliff
-        assertTrue(canClaimBoost); // Can claim boost even during cliff
         
         // Try to claim principal - should fail (claimable amount is 0)
         uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
         assertEq(claimableAmount, 0);
         
-        // Should be able to claim boost rewards during cliff
-        uint256 boostAmount = streamBoost.getClaimableBoostAmount(streamId);
-        if (boostAmount > 0) {
-            vm.prank(recipient);
-            streamBoost.claimBoostOnly(streamId);
-        }
     }
 
-    function testTerminationDuringCliff() public {
-        string memory streamId = "terminate_cliff_test";
-        
-        // Create stream with cliff
-        vm.startPrank(sender);
-        token.approve(address(streamBoost), STREAM_AMOUNT);
-        streamBoost.createStream(
-            streamId,
-            recipient,
-            address(token),
-            STREAM_AMOUNT,
-            30 days,
-            10 days,
-            false
-        );
-        vm.stopPrank();
-
-        // Fast forward to during cliff period (day 5)
-        vm.prank(owner);
-        streamBoost.mockSetTimestamp(block.timestamp + 5 days);
-        
-        // Calculate expected penalty (should be 25% during cliff)
-        uint256 expectedPenalty = STREAM_AMOUNT * 25 / 100;
-        uint256 expectedTransfer = STREAM_AMOUNT - expectedPenalty;
-        
-        uint256 recipientBalanceBefore = token.balanceOf(recipient);
-        
-        // Terminate during cliff period
-        vm.prank(sender);
-        streamBoost.terminateStream(streamId);
-        
-        uint256 recipientBalanceAfter = token.balanceOf(recipient);
-        
-        // Verify penalty was correctly applied
-        assertEq(recipientBalanceAfter - recipientBalanceBefore, expectedTransfer);
-        
-        StreamBoost.Stream memory stream = streamBoost.getStream(streamId);
-        assertEq(stream.financials.penaltiesAccrued, expectedPenalty);
-    }
 
     function testCliffInfoFunction() public {
         string memory streamId = "cliff_info_test";
@@ -1501,8 +732,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            cliffDuration,
-            false
+            cliffDuration
         );
         vm.stopPrank();
 
@@ -1558,8 +788,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            0, // No cliff initially
-            false
+            0 // No cliff initially
         );
         vm.stopPrank();
 
@@ -1596,8 +825,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            7 days,
-            false
+            7 days
         );
         vm.stopPrank();
 
@@ -1643,8 +871,7 @@ contract StreamBoostTest is Test {
             address(token),
             STREAM_AMOUNT,
             30 days,
-            0, // No cliff
-            false
+            0 // No cliff
         );
         vm.stopPrank();
 
@@ -1658,7 +885,7 @@ contract StreamBoostTest is Test {
         uint256 claimableAmount = streamBoost.getClaimableAmount(streamId);
         assertTrue(claimableAmount > 0);
         
-        (bool canClaimPrincipal, bool canClaimBoost) = streamBoost.canClaimDuringCliff(streamId);
+        bool canClaimPrincipal = streamBoost.canClaimDuringCliff(streamId);
         assertTrue(canClaimPrincipal); // Should be able to claim principal immediately
     }
 }
