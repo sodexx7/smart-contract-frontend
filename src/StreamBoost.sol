@@ -127,6 +127,7 @@ contract StreamBoost is Ownable {
         allStreamIds.push(_id);
 
         protocolStats.totalActiveStreams++;
+        // @audit different tokens have different value unit. should adjust
         protocolStats.totalValueLocked += _totalAmount;
         protocolStats.lastUpdated = getCurrentTimestamp();
 
@@ -358,6 +359,7 @@ contract StreamBoost is Ownable {
         });
     }
 
+    // @audit make sense the actual protocolStats meaning
     function setMockProtocolStats(
         uint256 _totalValueLocked,
         uint256 _totalActiveStreams,
