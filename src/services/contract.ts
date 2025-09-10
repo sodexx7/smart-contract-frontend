@@ -77,6 +77,13 @@ const CONTRACT_ABI = [
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
 ] as const;
 
 // Create public client
@@ -110,6 +117,25 @@ export interface StreamData {
 }
 
 export class ContractService {
+  /**
+   * Get the contract owner address
+   */
+  static async getOwner(): Promise<string | null> {
+    try {
+      console.log("Fetching contract owner from:", CONTRACT_ADDRESS);
+      const result = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "owner",
+      });
+      console.log("Contract owner:", result);
+      return result as string;
+    } catch (error) {
+      console.error("Error fetching contract owner:", error);
+      return null;
+    }
+  }
+
   /**
    * Get all stream IDs from the contract
    */

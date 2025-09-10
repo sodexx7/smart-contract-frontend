@@ -17,8 +17,12 @@ interface MainContentProps {
 }
 
 export function MainContent({ activeTab, onTabChange, onStreamClick }: MainContentProps) {
-  const { streams, loading, error, refetch } = useStreams();
+  const { streams, loading, error, contractOwner, refetch } = useStreams();
   const { address: connectedAddress } = useWallet();
+  
+  // Check if connected user is the contract owner
+  const isContractOwner = connectedAddress && contractOwner && 
+                         connectedAddress.toLowerCase() === contractOwner.toLowerCase();
 
   // Transform contract streams for display
   const transformStreamForDisplay = (stream: any) => {
@@ -26,12 +30,26 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
     const claimedFormatted = ContractService.formatTokenAmount(stream.claimedAmount);
     const claimableFormatted = ContractService.formatTokenAmount(stream.claimableAmount);
     
+    // Determine relationship type for owner
+    let relationshipType = 'third-party';
+    if (connectedAddress) {
+      const isOwnerSender = stream.sender.toLowerCase() === connectedAddress.toLowerCase();
+      const isOwnerRecipient = stream.recipient.toLowerCase() === connectedAddress.toLowerCase();
+      
+      if (isOwnerSender) {
+        relationshipType = 'owner-sender';
+      } else if (isOwnerRecipient) {
+        relationshipType = 'owner-recipient';
+      }
+    }
+    
     return {
       id: stream.id,
       sender: `${stream.sender.slice(0, 6)}...${stream.sender.slice(-4)}`,
       recipient: `${stream.recipient.slice(0, 6)}...${stream.recipient.slice(-4)}`,
       fullSender: stream.sender, // Keep full address for filtering
       fullRecipient: stream.recipient, // Keep full address for filtering
+      relationshipType, // For owner view distinctions
       token: 'USDC', // Assume USDC for now
       rate: `${(parseFloat(totalFormatted) / ((stream.endTime - stream.startTime) / 86400)).toFixed(0)}/day`,
       total: parseFloat(totalFormatted).toLocaleString(),
@@ -57,14 +75,27 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
   const displayStreams = streams.map(transformStreamForDisplay);
   
   // Filter streams based on whether connected address is sender or recipient
+  // If user is contract owner, show different views in each tab
   const outgoingStreams = displayStreams.filter(stream => {
-    return connectedAddress && 
-           stream.fullSender.toLowerCase() === connectedAddress.toLowerCase();
+    if (isContractOwner) {
+      // Owner sees their own outgoing streams and all third-party streams in outgoing tab
+      return stream.relationshipType === 'owner-sender' || stream.relationshipType === 'third-party';
+    } else {
+      // Regular users only see streams where they are sender
+      return connectedAddress && 
+             stream.fullSender.toLowerCase() === connectedAddress.toLowerCase();
+    }
   });
   
   const incomingContractStreams = displayStreams.filter(stream => {
-    return connectedAddress && 
-           stream.fullRecipient.toLowerCase() === connectedAddress.toLowerCase();
+    if (isContractOwner) {
+      // Owner sees their own incoming streams and all third-party streams in incoming tab
+      return stream.relationshipType === 'owner-recipient' || stream.relationshipType === 'third-party';
+    } else {
+      // Regular users only see streams where they are recipient
+      return connectedAddress && 
+             stream.fullRecipient.toLowerCase() === connectedAddress.toLowerCase();
+    }
   });
 
   // Keep existing sample data for completed and pending
@@ -262,6 +293,11 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               <div className="flex items-center gap-2">
                 <span className="text-lg">📤</span>
                 <h2>OUTGOING STREAMS ({outgoingStreams.length + originalOutgoingStreams.length})</h2>
+                {isContractOwner && (
+                  <Badge variant="secondary" className="ml-2">
+                    👑 Owner View
+                  </Badge>
+                )}
                 {outgoingStreams.length > 0 && (
                   <Badge variant="secondary" className="ml-2">
                     {outgoingStreams.length} from contract
@@ -302,13 +338,50 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               
               <div className="divide-y">
                 {/* Contract streams first */}
-                {outgoingStreams.map((stream) => (
-                  <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 border-l-green-500" onClick={() => onStreamClick(stream, "sender")}>
+                {outgoingStreams.map((stream) => {
+                  // Determine border color and badge based on relationship type
+                  const getBorderColor = () => {
+                    if (!isContractOwner) return 'border-l-green-500';
+                    
+                    switch (stream.relationshipType) {
+                      case 'owner-sender':
+                        return 'border-l-green-500';
+                      case 'third-party':
+                        return 'border-l-purple-500';
+                      default:
+                        return 'border-l-gray-500';
+                    }
+                  };
+                  
+                  const getBadgeInfo = () => {
+                    if (!isContractOwner) {
+                      return { text: 'Live Contract', className: 'text-green-600' };
+                    }
+                    
+                    switch (stream.relationshipType) {
+                      case 'owner-sender':
+                        return { text: 'Your Stream', className: 'text-green-600' };
+                      case 'third-party':
+                        return { text: 'Third Party', className: 'text-purple-600' };
+                      default:
+                        return { text: 'Live Contract', className: 'text-gray-600' };
+                    }
+                  };
+                  
+                  const badgeInfo = getBadgeInfo();
+                  
+                  return (
+                  <div key={stream.id} className={`px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 ${getBorderColor()}`} onClick={() => onStreamClick(stream, "sender")}>
                     {/* Add a small indicator for contract streams */}
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-xs text-green-600">
-                        Live Contract
+                      <Badge variant="outline" className={`text-xs ${badgeInfo.className}`}>
+                        {badgeInfo.text}
                       </Badge>
+                      {isContractOwner && stream.relationshipType === 'third-party' && (
+                        <Badge variant="secondary" className="text-xs">
+                          👁️ Owner View
+                        </Badge>
+                      )}
                     </div>
                     
                     {/* Main row */}
@@ -388,7 +461,8 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
                       <div className="col-span-6"></div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 
                 {/* Sample streams with different styling */}
                 {originalOutgoingStreams.map((stream) => (
@@ -485,6 +559,11 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               <div className="flex items-center gap-2">
                 <span className="text-lg">📥</span>
                 <h2>INCOMING STREAMS ({incomingStreams.length + incomingContractStreams.length})</h2>
+                {isContractOwner && (
+                  <Badge variant="secondary" className="ml-2">
+                    👑 Owner View
+                  </Badge>
+                )}
                 {incomingContractStreams.length > 0 && (
                   <Badge variant="secondary" className="ml-2">
                     {incomingContractStreams.length} from contract
@@ -525,13 +604,50 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               
               <div className="divide-y">
                 {/* Contract streams first */}
-                {incomingContractStreams.map((stream) => (
-                  <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 border-l-blue-500" onClick={() => onStreamClick(stream, "recipient")}>
+                {incomingContractStreams.map((stream) => {
+                  // Determine border color and badge based on relationship type
+                  const getBorderColor = () => {
+                    if (!isContractOwner) return 'border-l-blue-500';
+                    
+                    switch (stream.relationshipType) {
+                      case 'owner-recipient':
+                        return 'border-l-blue-500';
+                      case 'third-party':
+                        return 'border-l-purple-500';
+                      default:
+                        return 'border-l-gray-500';
+                    }
+                  };
+                  
+                  const getBadgeInfo = () => {
+                    if (!isContractOwner) {
+                      return { text: 'Live Contract', className: 'text-blue-600' };
+                    }
+                    
+                    switch (stream.relationshipType) {
+                      case 'owner-recipient':
+                        return { text: 'Your Stream', className: 'text-blue-600' };
+                      case 'third-party':
+                        return { text: 'Third Party', className: 'text-purple-600' };
+                      default:
+                        return { text: 'Live Contract', className: 'text-gray-600' };
+                    }
+                  };
+                  
+                  const badgeInfo = getBadgeInfo();
+                  
+                  return (
+                  <div key={stream.id} className={`px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 ${getBorderColor()}`} onClick={() => onStreamClick(stream, "recipient")}>
                     {/* Add a small indicator for contract streams */}
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-xs text-blue-600">
-                        Live Contract
+                      <Badge variant="outline" className={`text-xs ${badgeInfo.className}`}>
+                        {badgeInfo.text}
                       </Badge>
+                      {isContractOwner && stream.relationshipType === 'third-party' && (
+                        <Badge variant="secondary" className="text-xs">
+                          👁️ Owner View
+                        </Badge>
+                      )}
                     </div>
                     
                     {/* Main row */}
@@ -605,7 +721,8 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
                       <div className="col-span-6"></div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 
                 {/* Sample streams */}
                 {incomingStreams.map((stream) => (
