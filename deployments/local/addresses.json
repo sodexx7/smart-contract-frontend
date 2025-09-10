@@ -1,0 +1,40 @@
+{
+  "network": "local",
+  "chainId": 31337,
+  "deployedAt": "2024-01-01T00:00:00.000Z",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "contracts": {
+    "StreamBoost": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "deployedAt": "2024-01-01T00:00:00.000Z",
+      "deploymentTx": "0x...",
+      "blockNumber": 0,
+      "verified": false,
+      "version": "1.0.0"
+    },
+    "MockUSDC": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "deployedAt": "2024-01-01T00:00:00.000Z",
+      "deploymentTx": "0x...",
+      "blockNumber": 0,
+      "verified": false,
+      "version": "1.0.0"
+    },
+    "MockETH": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "deployedAt": "2024-01-01T00:00:00.000Z",
+      "deploymentTx": "0x...",
+      "blockNumber": 0,
+      "verified": false,
+      "version": "1.0.0"
+    },
+    "MockBTC": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "deployedAt": "2024-01-01T00:00:00.000Z",
+      "deploymentTx": "0x...",
+      "blockNumber": 0,
+      "verified": false,
+      "version": "1.0.0"
+    }
+  }
+}

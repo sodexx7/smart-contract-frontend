@@ -5,6 +5,10 @@ import { Progress } from "./ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { MoreHorizontal, Pause, Play, StopCircle, Filter, ChevronDown, TrendingUp, X, DollarSign, BarChart3, RotateCcw, Sparkles, RefreshCw, AlertTriangle } from "lucide-react";
+import { useStreams } from "../hooks/useStreams";
+import { useWallet } from "../hooks/useWallet";
+import { ContractService } from "../services/contract";
+import "../utils/contractTest"; // Import to run the test
 
 interface MainContentProps {
   activeTab: string;
@@ -13,7 +17,58 @@ interface MainContentProps {
 }
 
 export function MainContent({ activeTab, onTabChange, onStreamClick }: MainContentProps) {
-  const outgoingStreams = [
+  const { streams, loading, error, refetch } = useStreams();
+  const { address: connectedAddress } = useWallet();
+
+  // Transform contract streams for display
+  const transformStreamForDisplay = (stream: any) => {
+    const totalFormatted = ContractService.formatTokenAmount(stream.totalAmount);
+    const claimedFormatted = ContractService.formatTokenAmount(stream.claimedAmount);
+    const claimableFormatted = ContractService.formatTokenAmount(stream.claimableAmount);
+    
+    return {
+      id: stream.id,
+      sender: `${stream.sender.slice(0, 6)}...${stream.sender.slice(-4)}`,
+      recipient: `${stream.recipient.slice(0, 6)}...${stream.recipient.slice(-4)}`,
+      fullSender: stream.sender, // Keep full address for filtering
+      fullRecipient: stream.recipient, // Keep full address for filtering
+      token: 'USDC', // Assume USDC for now
+      rate: `${(parseFloat(totalFormatted) / ((stream.endTime - stream.startTime) / 86400)).toFixed(0)}/day`,
+      total: parseFloat(totalFormatted).toLocaleString(),
+      streamed: (parseFloat(totalFormatted) * stream.progress / 100).toLocaleString(),
+      claimed: claimedFormatted,
+      claimable: claimableFormatted,
+      remaining: (parseFloat(totalFormatted) - parseFloat(claimedFormatted)).toLocaleString(),
+      progress: Math.round(stream.progress),
+      status: stream.status,
+      endDate: new Date(stream.endTime * 1000).toLocaleDateString(),
+      daysLeft: ContractService.getTimeRemaining(stream.endTime),
+      boost: { enabled: false, rate: "0%" },
+      streamType: stream.status === 'active' ? 'base' : stream.status,
+      hasCliff: stream.cliffTime > stream.startTime,
+      cliffTime: stream.cliffTime,
+      // Add raw timestamps for StreamDetail component
+      startTime: stream.startTime,
+      endTime: stream.endTime
+    };
+  };
+
+  // Separate streams by direction based on connected wallet address
+  const displayStreams = streams.map(transformStreamForDisplay);
+  
+  // Filter streams based on whether connected address is sender or recipient
+  const outgoingStreams = displayStreams.filter(stream => {
+    return connectedAddress && 
+           stream.fullSender.toLowerCase() === connectedAddress.toLowerCase();
+  });
+  
+  const incomingContractStreams = displayStreams.filter(stream => {
+    return connectedAddress && 
+           stream.fullRecipient.toLowerCase() === connectedAddress.toLowerCase();
+  });
+
+  // Keep existing sample data for completed and pending
+  const originalOutgoingStreams = [
     {
       id: "strm_01",
       recipient: "0xRec...Z",
@@ -167,9 +222,29 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
     <main className="ml-[320px] mt-[72px] p-6 min-h-[calc(100vh-72px)]">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div>
-          <h1>Stream Dashboard</h1>
-          <p className="text-muted-foreground">Manage your token streams and track payments</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1>Stream Dashboard</h1>
+            <p className="text-muted-foreground">Manage your token streams and track payments</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {loading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Loading streams...
+              </div>
+            )}
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <AlertTriangle className="w-4 h-4" />
+                {error}
+              </div>
+            )}
+            <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         {/* Stream Management Tabs */}
@@ -186,7 +261,12 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-lg">📤</span>
-                <h2>OUTGOING STREAMS ({outgoingStreams.length})</h2>
+                <h2>OUTGOING STREAMS ({outgoingStreams.length + originalOutgoingStreams.length})</h2>
+                {outgoingStreams.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {outgoingStreams.length} from contract
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Select defaultValue="progress">
@@ -221,7 +301,97 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               </div>
               
               <div className="divide-y">
+                {/* Contract streams first */}
                 {outgoingStreams.map((stream) => (
+                  <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 border-l-green-500" onClick={() => onStreamClick(stream, "sender")}>
+                    {/* Add a small indicator for contract streams */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" className="text-xs text-green-600">
+                        Live Contract
+                      </Badge>
+                    </div>
+                    
+                    {/* Main row */}
+                    <div className="grid grid-cols-12 gap-4 items-center">
+                      <div className="col-span-2">
+                        <span className="font-medium text-sm">{stream.id}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span className="text-sm font-mono">{stream.recipient}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span className="text-sm font-medium">{stream.total} {stream.token}</span>
+                      </div>
+                      
+                      <div className="col-span-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <Progress value={stream.progress} className="h-2" />
+                            </div>
+                            <span className="text-sm font-medium min-w-[40px]">{stream.progress}%</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <Badge 
+                          variant={stream.status === 'active' ? 'default' : stream.status === 'paused' ? 'secondary' : 'outline'}
+                          className="uppercase text-xs"
+                        >
+                          {stream.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="col-span-1">
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            {stream.status === 'active' ? (
+                              <Pause className="w-4 h-4" />
+                            ) : stream.status === 'paused' ? (
+                              <Play className="w-4 h-4" />
+                            ) : (
+                              <X className="w-4 h-4" />
+                            )}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <TrendingUp className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Sub row */}
+                    <div className="grid grid-cols-12 gap-4 mt-1 text-xs text-muted-foreground">
+                      <div className="col-span-2">
+                        {stream.hasCliff ? (
+                          <span className="flex items-center gap-1">
+                            ⏰ <span>Has cliff</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            📊 <span>Base rate</span>
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span>{stream.daysLeft}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span>{stream.claimed} clmd</span>
+                      </div>
+                      
+                      <div className="col-span-6"></div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Sample streams with different styling */}
+                {originalOutgoingStreams.map((stream) => (
                   <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer" onClick={() => onStreamClick(stream, "sender")}>
                     {/* Main row */}
                     <div className="grid grid-cols-12 gap-4 items-center">
@@ -314,7 +484,12 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-lg">📥</span>
-                <h2>INCOMING STREAMS ({incomingStreams.length})</h2>
+                <h2>INCOMING STREAMS ({incomingStreams.length + incomingContractStreams.length})</h2>
+                {incomingContractStreams.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {incomingContractStreams.length} from contract
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Select defaultValue="progress">
@@ -349,6 +524,90 @@ export function MainContent({ activeTab, onTabChange, onStreamClick }: MainConte
               </div>
               
               <div className="divide-y">
+                {/* Contract streams first */}
+                {incomingContractStreams.map((stream) => (
+                  <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer border-l-4 border-l-blue-500" onClick={() => onStreamClick(stream, "recipient")}>
+                    {/* Add a small indicator for contract streams */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant="outline" className="text-xs text-blue-600">
+                        Live Contract
+                      </Badge>
+                    </div>
+                    
+                    {/* Main row */}
+                    <div className="grid grid-cols-12 gap-4 items-center">
+                      <div className="col-span-2">
+                        <span className="font-medium text-sm">{stream.id}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span className="text-sm font-mono">{stream.sender}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span className="text-sm font-medium">{stream.total} {stream.token}</span>
+                      </div>
+                      
+                      <div className="col-span-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <Progress value={stream.progress} className="h-2" />
+                            </div>
+                            <span className="text-sm font-medium min-w-[40px]">{stream.progress}%</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <Badge 
+                          variant={stream.status === 'active' ? 'default' : stream.status === 'paused' ? 'secondary' : 'outline'}
+                          className="uppercase text-xs"
+                        >
+                          {stream.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="col-span-1">
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <DollarSign className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <BarChart3 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Sub row */}
+                    <div className="grid grid-cols-12 gap-4 mt-1 text-xs text-muted-foreground">
+                      <div className="col-span-2">
+                        {stream.hasCliff ? (
+                          <span className="flex items-center gap-1">
+                            ⏰ <span>Has cliff</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            📊 <span>Base rate</span>
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span>{stream.daysLeft}</span>
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <span>{stream.claimable} claimable</span>
+                      </div>
+                      
+                      <div className="col-span-6"></div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Sample streams */}
                 {incomingStreams.map((stream) => (
                   <div key={stream.id} className="px-4 py-3 hover:bg-muted/30 cursor-pointer" onClick={() => onStreamClick(stream, "recipient")}>
                     {/* Main row */}

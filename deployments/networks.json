@@ -1,0 +1,40 @@
+{
+  "networks": {
+    "mainnet": {
+      "chainId": 1,
+      "name": "Ethereum Mainnet",
+      "rpcUrl": "https://ethereum-rpc.publicnode.com",
+      "explorerUrl": "https://etherscan.io",
+      "deployerAddress": "0x...",
+      "gasPrice": "auto",
+      "confirmations": 2
+    },
+    "sepolia": {
+      "chainId": 11155111,
+      "name": "Sepolia Testnet", 
+      "rpcUrl": "https://sepolia.drpc.org",
+      "explorerUrl": "https://sepolia.etherscan.io",
+      "deployerAddress": "0x...",
+      "gasPrice": "auto",
+      "confirmations": 1
+    },
+    "base": {
+      "chainId": 8453,
+      "name": "Base Mainnet",
+      "rpcUrl": "https://mainnet.base.org",
+      "explorerUrl": "https://basescan.org",
+      "deployerAddress": "0x...",
+      "gasPrice": "auto",
+      "confirmations": 1
+    },
+    "local": {
+      "chainId": 31337,
+      "name": "Local Hardhat/Anvil",
+      "rpcUrl": "http://127.0.0.1:8545",
+      "explorerUrl": null,
+      "deployerAddress": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "gasPrice": "auto",
+      "confirmations": 1
+    }
+  }
+}

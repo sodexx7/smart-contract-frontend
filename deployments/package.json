@@ -1,0 +1,22 @@
+{
+  "name": "@streamboost/deployments",
+  "version": "1.0.0",
+  "description": "StreamBoost deployment configurations and utilities",
+  "main": "utils.js",
+  "types": "utils.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "validate": "node -e \"console.log(require('./utils').validateDeployments('local', ['StreamBoost', 'MockUSDC', 'MockETH', 'MockBTC']))\"",
+    "addresses": "node -e \"console.log(JSON.stringify(require('./utils').getAllAddresses('local'), null, 2))\""
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^4.9.0"
+  },
+  "files": [
+    "utils.js",
+    "utils.d.ts",
+    "*/addresses.json",
+    "networks.json"
+  ]
+}

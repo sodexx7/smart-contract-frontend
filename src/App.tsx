@@ -9,7 +9,9 @@ export default function App() {
   const [isCreateStreamOpen, setIsCreateStreamOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("outgoing");
   const [selectedStream, setSelectedStream] = useState<any>(null);
-  const [streamPerspective, setStreamPerspective] = useState<"sender" | "recipient">("sender");
+  const [streamPerspective, setStreamPerspective] = useState<
+    "sender" | "recipient"
+  >("sender");
 
   const openCreateStream = () => {
     setIsCreateStreamOpen(true);
@@ -23,7 +25,10 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  const openStreamDetail = (stream: any, perspective: "sender" | "recipient") => {
+  const openStreamDetail = (
+    stream: any,
+    perspective: "sender" | "recipient"
+  ) => {
     setSelectedStream(stream);
     setStreamPerspective(perspective);
   };
@@ -36,19 +41,19 @@ export default function App() {
     <div className="min-h-screen bg-background">
       <Header />
       <div className="flex">
-        <Sidebar 
+        <Sidebar
           onNavigateToCreateStream={openCreateStream}
           onNavigateToTab={navigateToTab}
         />
-        <MainContent 
-          activeTab={activeTab} 
+        <MainContent
+          activeTab={activeTab}
           onTabChange={setActiveTab}
           onStreamClick={openStreamDetail}
         />
       </div>
-      <CreateStreamModal 
-        isOpen={isCreateStreamOpen} 
-        onClose={closeCreateStream} 
+      <CreateStreamModal
+        isOpen={isCreateStreamOpen}
+        onClose={closeCreateStream}
       />
       <StreamDetail
         stream={selectedStream}

@@ -18,6 +18,14 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
     const streamAmount = stream.streamed || stream.amount;
     const streamToken = stream.token;
     const claimedAmount = stream.claimed || "0";
+    const availableAmount = stream.claimable || "0";
+    
+    // Format dates from stream data
+    const startDate = stream.startTime ? new Date(stream.startTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Nov 1';
+    const endDate = stream.endTime ? new Date(stream.endTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Jan 1';
+    const cliffDate = stream.cliffTime && stream.cliffTime > stream.startTime ? new Date(stream.cliffTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+    const hasCliff = stream.hasCliff || (stream.cliffTime && stream.cliffTime > stream.startTime);
+    const progress = stream.progress || 0;
     
     return (
       <>
@@ -25,25 +33,49 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
         <div className="space-y-3">
           <h3 className="font-medium">Progress Timeline</h3>
           <div className="bg-muted/30 p-4 rounded-lg">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-              <span>Start</span>
-              <span>Cliff</span>
-              <span>End</span>
-            </div>
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <div className="flex-1 h-0.5 bg-primary mx-2"></div>
-                <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <div className={`flex-1 h-0.5 mx-2 ${isCompleted ? 'bg-primary' : 'bg-muted'}`}></div>
-                <div className={`w-3 h-3 rounded-full ${isCompleted ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
-              <span>Nov 1</span>
-              <span>Nov 8</span>
-              <span>Jan 1</span>
-            </div>
+            {hasCliff ? (
+              // Timeline with cliff
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>Start</span>
+                  <span>Cliff</span>
+                  <span>End</span>
+                </div>
+                <div className="relative">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 0 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${progress > 20 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 20 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${isCompleted || progress >= 100 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                  <span>{startDate}</span>
+                  <span>{cliffDate}</span>
+                  <span>{endDate}</span>
+                </div>
+              </>
+            ) : (
+              // Simple timeline without cliff
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>Start</span>
+                  <span>End</span>
+                </div>
+                <div className="relative">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 0 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${isCompleted || progress >= 100 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                  <span>{startDate}</span>
+                  <span>{endDate}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -68,7 +100,7 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
             {!isCompleted && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Claimable:</span>
-                <span className="text-green-600">700 {streamToken}</span>
+                <span className="text-green-600">{stream.claimable || '0.00'} {streamToken}</span>
               </div>
             )}
           </div>
@@ -112,7 +144,7 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
             <>
               <Button className="w-full" size="sm">
                 <DollarSign className="w-4 h-4 mr-2" />
-                Claim 700 {streamToken}
+                Claim {stream.claimable || availableAmount} {streamToken}
               </Button>
               <Button variant="outline" className="w-full" size="sm">
                 <Pause className="w-4 h-4 mr-2" />
@@ -146,31 +178,62 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
     const totalAmount = stream.total || stream.amount;
     const streamToken = stream.token;
     
+    // Format dates from stream data
+    const startDate = stream.startTime ? new Date(stream.startTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Nov 1';
+    const endDate = stream.endTime ? new Date(stream.endTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Dec 25';
+    const cliffDate = stream.cliffTime && stream.cliffTime > stream.startTime ? new Date(stream.cliffTime * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+    const hasCliff = stream.hasCliff || (stream.cliffTime && stream.cliffTime > stream.startTime);
+    const progress = stream.progress || 0;
+    
     return (
       <>
         {/* Progress Timeline */}
         <div className="space-y-3">
           <h3 className="font-medium">Progress Timeline</h3>
           <div className="bg-muted/30 p-4 rounded-lg">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-              <span>Start</span>
-              <span>Cliff</span>
-              <span>End</span>
-            </div>
-            <div className="relative">
-              <div className="flex items-center justify-between">
-                <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <div className="flex-1 h-0.5 bg-primary mx-2"></div>
-                <div className="w-3 h-3 bg-primary rounded-full"></div>
-                <div className={`flex-1 h-0.5 mx-2 ${isCompleted ? 'bg-primary' : 'bg-primary'}`}></div>
-                <div className={`w-3 h-3 rounded-full ${isCompleted ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
-              <span>Nov 1</span>
-              <span></span>
-              <span>Dec 25</span>
-            </div>
+            {hasCliff ? (
+              // Timeline with cliff
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>Start</span>
+                  <span>Cliff</span>
+                  <span>End</span>
+                </div>
+                <div className="relative">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 0 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${progress > 20 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 20 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${isCompleted || progress >= 100 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                  <span>{startDate}</span>
+                  <span>{cliffDate}</span>
+                  <span>{endDate}</span>
+                </div>
+              </>
+            ) : (
+              // Simple timeline without cliff
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>Start</span>
+                  <span>End</span>
+                </div>
+                <div className="relative">
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
+                    <div className={`flex-1 h-0.5 mx-2 ${progress > 0 ? 'bg-primary' : 'bg-muted'}`}></div>
+                    <div className={`w-3 h-3 rounded-full ${isCompleted || progress >= 100 ? 'bg-primary' : 'bg-muted-foreground'}`}></div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
+                  <span>{startDate}</span>
+                  <span>{endDate}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -186,7 +249,7 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Progress:</span>
-              <span>{stream.progress || 100}% ({availableAmount} {streamToken})</span>
+              <span>{progress}% ({stream.streamed || availableAmount} {streamToken})</span>
             </div>
             {!isCompleted ? (
               <>
@@ -239,7 +302,7 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
             <>
               <Button className="w-full" size="sm">
                 <DollarSign className="w-4 h-4 mr-2" />
-                Claim {availableAmount} {streamToken}
+                Claim {stream.claimable || availableAmount} {streamToken}
               </Button>
               <Button variant="outline" className="w-full" size="sm">
                 <Eye className="w-4 h-4 mr-2" />
