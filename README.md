@@ -53,3 +53,5 @@ Run `npm run dev` to start the development server.
         claude mcp add playwright npx @playwright/mcp@latest
 
     reference: https://learn.deeplearning.ai/courses/claude-code-a-highly-agentic-coding-assistant/lesson/vvq28/creating-web-app-based-on-a-figma-mockup
+
+    front-end iterations. solving the wallet connected issues

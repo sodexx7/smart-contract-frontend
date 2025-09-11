@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
@@ -6,7 +6,11 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { X, ArrowLeft, ArrowRight } from "lucide-react";
+import { X, ArrowLeft, ArrowRight, Wallet, AlertCircle } from "lucide-react";
+import { useWallet } from "../hooks/useWallet";
+import { useTokenBalances } from "../hooks/useTokenBalances";
+import { formatBalance } from "../utils/formatBalance";
+import { MINIMUM_BALANCE_THRESHOLD } from "../utils/tokenBalances";
 
 interface CreateStreamModalProps {
   isOpen: boolean;
@@ -22,7 +26,6 @@ interface FormData {
   duration: string;
   enableCliff: boolean;
   cliffDays: string;
-  enableBoost: boolean;
   startTime: "now" | "custom";
   customDate: string;
   customTime: string;
@@ -44,7 +47,6 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
     duration: "",
     enableCliff: false,
     cliffDays: "7",
-    enableBoost: true,
     startTime: "now",
     customDate: "",
     customTime: "",
@@ -57,12 +59,33 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
     allowThirdParty: false,
   });
 
-  const tokens = [
-    { value: "usdc", label: "USDC", balance: "25,000.00" },
-    { value: "dai", label: "DAI", balance: "15,678.90" },
-    { value: "usdt", label: "USDT", balance: "8,432.11" },
-    { value: "eth", label: "ETH", balance: "12.45" }
-  ];
+  const wallet = useWallet();
+  const { tokenBalances, loading: balancesLoading, error: balancesError } = useTokenBalances(wallet.address);
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentStep(1);
+      setFormData({
+        token: "",
+        recipient: "",
+        amount: "",
+        duration: "",
+        enableCliff: false,
+        cliffDays: "7",
+        startTime: "now",
+        customDate: "",
+        customTime: "",
+        unlockSchedule: "stepped",
+        stepDays: "7",
+        stepAmount: "",
+        allowEarlyClaim: true,
+        allowPauseResume: true,
+        allowTopUp: true,
+        allowThirdParty: false,
+      });
+    }
+  }, [isOpen]);
 
   const updateFormData = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -77,15 +100,6 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
     return "0";
   };
 
-  const calculateBoostEarnings = () => {
-    if (formData.amount && formData.enableBoost) {
-      const amount = parseFloat(formData.amount);
-      const duration = parseInt(formData.duration) || 30;
-      const apr = 0.072; // 7.2% APR
-      return ((amount * apr * duration) / 365).toFixed(2);
-    }
-    return "0";
-  };
 
   const calculateStepAmount = () => {
     if (formData.amount && formData.stepDays) {
@@ -149,18 +163,65 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           {currentStep === 1 && (
             <div className="space-y-6">
+              {/* Wallet Connection Status */}
+              {!wallet.isConnected && (
+                <Card className="border-orange-200 bg-orange-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 text-orange-800">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="text-sm font-medium">Wallet not connected</span>
+                    </div>
+                    <p className="text-sm text-orange-700 mt-1 mb-3">
+                      Please connect your wallet to see your available tokens.
+                    </p>
+                    <Button 
+                      size="sm" 
+                      onClick={wallet.connectWallet} 
+                      disabled={wallet.isConnecting}
+                      className="bg-orange-600 hover:bg-orange-700"
+                    >
+                      <Wallet className="w-4 h-4 mr-2" />
+                      {wallet.isConnecting ? "Connecting..." : "Connect Wallet"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* No tokens available */}
+              {wallet.isConnected && tokenBalances.length === 0 && !balancesLoading && (
+                <Card className="border-yellow-200 bg-yellow-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 text-yellow-800">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="text-sm font-medium">No tokens available</span>
+                    </div>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      You don't have any supported tokens with a balance of at least {MINIMUM_BALANCE_THRESHOLD.toLocaleString()} units. Make sure you're connected to the Sepolia network and have sufficient test tokens.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
               {/* Token Selection */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Token</Label>
-                  <Select value={formData.token} onValueChange={(value) => updateFormData("token", value)}>
+                  <Select 
+                    value={formData.token} 
+                    onValueChange={(value) => updateFormData("token", value)}
+                    disabled={!wallet.isConnected || tokenBalances.length === 0}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="USDC" />
+                      <SelectValue placeholder={wallet.isConnected ? (balancesLoading ? "Loading..." : "Select token") : "Connect wallet"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {tokens.map((token) => (
-                        <SelectItem key={token.value} value={token.value}>
-                          {token.label}
+                      {tokenBalances.map((token) => (
+                        <SelectItem key={token.address} value={token.address}>
+                          <div className="flex items-center justify-between w-full">
+                            <span>{token.symbol}</span>
+                            <span className="text-sm text-muted-foreground ml-2">
+                              {formatBalance(token.formattedBalance)}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -168,7 +229,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 </div>
                 <div className="flex items-end">
                   <span className="text-sm text-muted-foreground">
-                    Balance: {tokens.find(t => t.value === formData.token)?.balance || "0.00"}
+                    Balance: {(() => {
+                      const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                      return selectedToken ? formatBalance(selectedToken.formattedBalance) : "0.00";
+                    })()}
                   </span>
                 </div>
               </div>
@@ -194,9 +258,13 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                       value={formData.amount}
                       onChange={(e) => updateFormData("amount", e.target.value)}
                       className="rounded-r-none"
+                      disabled={!wallet.isConnected || !formData.token}
                     />
                     <div className="bg-muted px-3 py-2 border border-l-0 rounded-r-md text-sm">
-                      {formData.token?.toUpperCase() || "USDC"}
+                      {(() => {
+                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                        return selectedToken?.symbol || "Token";
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -214,6 +282,7 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   </div>
                 </div>
               </div>
+
 
               {/* Cliff */}
               <div className="space-y-3">
@@ -238,38 +307,6 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 </div>
               </div>
 
-              {/* Boost */}
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="boost"
-                    checked={formData.enableBoost}
-                    onCheckedChange={(checked) => updateFormData("enableBoost", checked)}
-                  />
-                  <Label htmlFor="boost">Enable yield boost (+7.2% APR)</Label>
-                </div>
-              </div>
-
-              {/* Preview */}
-              <Card>
-                <CardContent className="p-4">
-                  <h3 className="font-medium mb-3">PREVIEW</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Daily unlock:</span>
-                      <span>~{calculateDailyUnlock()} {formData.token?.toUpperCase() || "USDC"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Boost earnings:</span>
-                      <span>~{calculateBoostEarnings()} {formData.token?.toUpperCase() || "USDC"} (over {formData.duration || "30"}d)</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Gas estimate:</span>
-                      <span>~$4.50</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           )}
 
@@ -357,7 +394,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                         <div className="flex items-center gap-2">
                           <span className="text-sm">Unlock:</span>
                           <span className="text-sm font-medium">
-                            {calculateStepAmount()} {formData.token?.toUpperCase() || "USDC"} per step
+                            {calculateStepAmount()} {(() => {
+                              const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                              return selectedToken?.symbol || "Token";
+                            })()} per step
                           </span>
                         </div>
                       </div>
@@ -434,7 +474,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex justify-between">
                       <span>Token:</span>
-                      <span className="font-medium">{formData.token?.toUpperCase() || "USDC"}</span>
+                      <span className="font-medium">{(() => {
+                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                        return selectedToken?.symbol || "Token";
+                      })()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Amount:</span>
@@ -461,10 +504,6 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                       <span className="font-medium">{formData.enableCliff ? `${formData.cliffDays} days` : "None"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Boost:</span>
-                      <span className="font-medium">{formData.enableBoost ? "Enabled (+7.2%)" : "Disabled"}</span>
-                    </div>
-                    <div className="flex justify-between">
                       <span>Start:</span>
                       <span className="font-medium">
                         {formData.startTime === "now" ? "Immediately" : `${formData.customDate} ${formData.customTime}`}
@@ -481,13 +520,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span>Stream Amount:</span>
-                      <span className="font-medium">{formData.amount || "0"} {formData.token?.toUpperCase() || "USDC"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Boost Deposit:</span>
-                      <span className="font-medium">
-                        {formData.enableBoost ? (parseFloat(formData.amount || "0") * 0.05).toFixed(2) : "0"} {formData.token?.toUpperCase() || "USDC"}
-                      </span>
+                      <span className="font-medium">{formData.amount || "0"} {(() => {
+                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                        return selectedToken?.symbol || "Token";
+                      })()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Network Fee:</span>
@@ -497,7 +533,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                     <div className="flex justify-between font-medium">
                       <span>Total Required:</span>
                       <span>
-                        {((parseFloat(formData.amount || "0")) + (formData.enableBoost ? parseFloat(formData.amount || "0") * 0.05 : 0) + 4.5).toFixed(2)} {formData.token?.toUpperCase() || "USDC"}
+                        {(parseFloat(formData.amount || "0") + 4.5).toFixed(2)} {(() => {
+                          const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                          return selectedToken?.symbol || "Token";
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -510,7 +549,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   <h3 className="font-medium mb-3">WALLET ACTIONS</h3>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                      <span className="text-sm">1. Approve {formData.token?.toUpperCase() || "USDC"} spend</span>
+                      <span className="text-sm">1. Approve {(() => {
+                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
+                        return selectedToken?.symbol || "Token";
+                      })()} spend</span>
                       <Button size="sm" variant="outline">Sign Transaction</Button>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted rounded-md">
