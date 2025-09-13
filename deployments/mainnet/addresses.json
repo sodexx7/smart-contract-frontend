@@ -1,0 +1,16 @@
+{
+  "network": "mainnet",
+  "chainId": 1,
+  "deployedAt": "2024-01-01T00:00:00.000Z",
+  "deployer": "0x0000000000000000000000000000000000000000",
+  "contracts": {
+    "StreamBoost": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "deployedAt": "2024-01-01T00:00:00.000Z",
+      "deploymentTx": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "blockNumber": 0,
+      "verified": false,
+      "version": "1.0.0"
+    }
+  }
+}

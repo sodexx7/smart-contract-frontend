@@ -1,0 +1,990 @@
+{
+  "contractName": "StreamBoost",
+  "sourceName": "src/StreamBoost.sol",
+  "networks": {
+    "sepolia": {
+      "address": "0xcc2149eeca0b6bb7228e7a651987ebb064276463",
+      "transactionHash": "0xbd5153e0a1668beaa32d023cdd062ab765214830b0fa6ba55f11011800892d76",
+      "blockNumber": 9159839
+    }
+  },
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "allStreamIds",
+      "inputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "assets",
+      "inputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbol",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "price",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "decimals",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "lastUpdated",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "canClaimDuringCliff",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "canClaimPrincipal",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "claimStream",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "_amount",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "createStream",
+      "inputs": [
+        {
+          "name": "_id",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "_recipient",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_token",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_totalAmount",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_duration",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_cliffDuration",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "getAllStreamIds",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string[]",
+          "internalType": "string[]"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getAsset",
+      "inputs": [
+        {
+          "name": "_symbol",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct StreamBoost.AssetState",
+          "components": [
+            {
+              "name": "symbol",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "price",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "decimals",
+              "type": "uint8",
+              "internalType": "uint8"
+            },
+            {
+              "name": "lastUpdated",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getClaimableAmount",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getClaimableProgress",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getCliffInfo",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cliffTime",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "timeUntilCliff",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "hasCliff",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "cliffPassed",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getCliffProgress",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cliffProgress",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "cliffPassed",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getProtocolStats",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct StreamBoost.ProtocolStats",
+          "components": [
+            {
+              "name": "totalValueLocked",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "totalActiveStreams",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "averageAPR",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "avgDurationDays",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "lastUpdated",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getStream",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct StreamBoost.Stream",
+          "components": [
+            {
+              "name": "id",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "sender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "recipient",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "timing",
+              "type": "tuple",
+              "internalType": "struct StreamBoost.StreamTiming",
+              "components": [
+                {
+                  "name": "startTime",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "endTime",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "cliffTime",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "createdAt",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "pausedAt",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "financials",
+              "type": "tuple",
+              "internalType": "struct StreamBoost.StreamFinancials",
+              "components": [
+                {
+                  "name": "totalAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "claimedAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "status",
+              "type": "uint8",
+              "internalType": "enum StreamBoost.StreamStatus"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getStreamProgress",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getUserIncomingStreams",
+      "inputs": [
+        {
+          "name": "_user",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string[]",
+          "internalType": "string[]"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getUserOutgoingStreams",
+      "inputs": [
+        {
+          "name": "_user",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string[]",
+          "internalType": "string[]"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getVestedAmount",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "mockResetTimestamp",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "mockSetCliffTime",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "_newCliffTime",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "mockSetTimestamp",
+      "inputs": [
+        {
+          "name": "_timestamp",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "mockSimulateStreamFailure",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "pauseStream",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "protocolStats",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "totalValueLocked",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "totalActiveStreams",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "averageAPR",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "avgDurationDays",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "lastUpdated",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "resumeStream",
+      "inputs": [
+        {
+          "name": "_streamId",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setMockAssetData",
+      "inputs": [
+        {
+          "name": "_symbol",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "_price",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_decimals",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setMockProtocolStats",
+      "inputs": [
+        {
+          "name": "_totalValueLocked",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_totalActiveStreams",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_averageAPR",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_avgDurationDays",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "streams",
+      "inputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "id",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "sender",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "recipient",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "timing",
+          "type": "tuple",
+          "internalType": "struct StreamBoost.StreamTiming",
+          "components": [
+            {
+              "name": "startTime",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "endTime",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "cliffTime",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "createdAt",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "pausedAt",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        },
+        {
+          "name": "financials",
+          "type": "tuple",
+          "internalType": "struct StreamBoost.StreamFinancials",
+          "components": [
+            {
+              "name": "totalAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "claimedAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "type": "uint8",
+          "internalType": "enum StreamBoost.StreamStatus"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "inputs": [
+        {
+          "name": "newOwner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "userIncomingStreams",
+      "inputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "userOutgoingStreams",
+      "inputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "validateCliffSetup",
+      "inputs": [
+        {
+          "name": "_duration",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "_cliffDuration",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "isValid",
+          "type": "bool",
+          "internalType": "bool"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "event",
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "name": "previousOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StreamCancelled",
+      "inputs": [
+        {
+          "name": "streamId",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StreamClaimed",
+      "inputs": [
+        {
+          "name": "streamId",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "amount",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StreamCreated",
+      "inputs": [
+        {
+          "name": "streamId",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "sender",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "recipient",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StreamPaused",
+      "inputs": [
+        {
+          "name": "streamId",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StreamResumed",
+      "inputs": [
+        {
+          "name": "streamId",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "OwnableInvalidOwner",
+      "inputs": [
+        {
+          "name": "owner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "OwnableUnauthorizedAccount",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Sepolia Testnet Deployment Log
+
+## Deployment on 2025-01-08T12:34:51.675Z
+
+**Block:** 9159839  
+**Deployer:** 0x610d7b11fb07f9b142c392a3649aa50dc4c9a528
+
+### Contracts Deployed
+
+#### StreamBoost
+- **Address:** 0xcc2149eeca0b6bb7228e7a651987ebb064276463
+- **Transaction:** 0xbd5153e0a1668beaa32d023cdd062ab765214830b0fa6ba55f11011800892d76
+- **Constructor Args:** None
+
+#### MockUSDC
+- **Address:** 0x2246008845d7385a7c5c9dacea09a36823fbcb88  
+- **Transaction:** 0x3370359b93839fa29e8dc7a5f12dc0aacea0f5fbca48e6e00a563809f37d15c5
+- **Constructor Args:** ["Mock USDC", "USDC", 6]
+
+### Verification Status
+- StreamBoost: Not verified ❌
+- MockUSDC: Not verified ❌
+
+### Links
+- [StreamBoost on Sepolia Explorer](https://sepolia.etherscan.io/address/0xcc2149eeca0b6bb7228e7a651987ebb064276463)
+- [MockUSDC on Sepolia Explorer](https://sepolia.etherscan.io/address/0x2246008845d7385a7c5c9dacea09a36823fbcb88)
