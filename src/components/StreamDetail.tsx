@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
 import { X, DollarSign, Pause, Plus, Eye, History, Play } from "lucide-react";
+import { useWallet } from "../hooks/useWallet";
 
 interface StreamDetailProps {
   stream: any;
@@ -10,8 +11,39 @@ interface StreamDetailProps {
   onClose: () => void;
 }
 
+const getExplorerUrl = (chainId: number, address: string) => {
+  const explorers: { [key: number]: string } = {
+    1: "https://etherscan.io",
+    11155111: "https://sepolia.etherscan.io", 
+    8453: "https://basescan.org",
+    137: "https://polygonscan.com",
+    42161: "https://arbiscan.io"
+  };
+  
+  const baseUrl = explorers[chainId];
+  return baseUrl ? `${baseUrl}/address/${address}` : null;
+};
+
 export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps) {
   if (!stream) return null;
+
+  const { chainId } = useWallet();
+
+  const handleViewSender = () => {
+    // Use fullSender for the full address and chainId from wallet
+    if (stream.fullSender && chainId) {
+      const explorerUrl = getExplorerUrl(chainId, stream.fullSender);
+      if (explorerUrl) {
+        window.open(explorerUrl, '_blank');
+      }
+    } else {
+      console.log('Missing data:', { 
+        fullSender: stream.fullSender, 
+        chainId,
+        stream: Object.keys(stream) 
+      });
+    }
+  };
 
   const getSenderContent = () => {
     const isCompleted = stream.completed || stream.status === "100% paid";
@@ -91,61 +123,30 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Progress:</span>
-              <span>{stream.progress || 100}% ({streamAmount} {streamToken})</span>
+              <span>{progress}% ({streamAmount} {streamToken})</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Claimed:</span>
+              <span className="text-muted-foreground">Streamed:</span>
+              <span>{streamAmount} {streamToken}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Claimed by recipient:</span>
               <span>{claimedAmount} {streamToken}</span>
             </div>
             {!isCompleted && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Claimable:</span>
-                <span className="text-green-600">{stream.claimable || '0.00'} {streamToken}</span>
+                <span className="text-muted-foreground">Available to claim:</span>
+                <span className="text-green-600">{availableAmount} {streamToken}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Boost Details */}
-        {stream.boost?.enabled && (
-          <div className="space-y-3">
-            <h3 className="font-medium flex items-center gap-2">
-              🚀 BOOST DETAILS
-            </h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Current APR:</span>
-                <span className="text-purple-400">{stream.boost.rate}</span>
-              </div>
-              {!isCompleted ? (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Projected earnings:</span>
-                    <span>197 {streamToken}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Risk level:</span>
-                    <span className="text-green-600">Low</span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Total earnings:</span>
-                  <span className="text-green-600">{stream.earnings}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Action Buttons */}
         <div className="space-y-2">
           {!isCompleted ? (
             <>
-              <Button className="w-full" size="sm">
-                <DollarSign className="w-4 h-4 mr-2" />
-                Claim {stream.claimable || availableAmount} {streamToken}
-              </Button>
               <Button variant="outline" className="w-full" size="sm">
                 <Pause className="w-4 h-4 mr-2" />
                 Pause Stream
@@ -304,13 +305,9 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
                 <DollarSign className="w-4 h-4 mr-2" />
                 Claim {stream.claimable || availableAmount} {streamToken}
               </Button>
-              <Button variant="outline" className="w-full" size="sm">
+              <Button variant="outline" className="w-full" size="sm" onClick={handleViewSender}>
                 <Eye className="w-4 h-4 mr-2" />
                 View Sender
-              </Button>
-              <Button variant="outline" className="w-full" size="sm">
-                <History className="w-4 h-4 mr-2" />
-                Stream History
               </Button>
             </>
           ) : (
@@ -319,7 +316,7 @@ export function StreamDetail({ stream, perspective, onClose }: StreamDetailProps
                 <History className="w-4 h-4 mr-2" />
                 View History
               </Button>
-              <Button variant="outline" className="w-full" size="sm">
+              <Button variant="outline" className="w-full" size="sm" onClick={handleViewSender}>
                 <Eye className="w-4 h-4 mr-2" />
                 View Sender
               </Button>
