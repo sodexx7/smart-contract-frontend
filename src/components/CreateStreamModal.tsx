@@ -6,8 +6,55 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { X, ArrowLeft, ArrowRight, Wallet, AlertCircle } from "lucide-react";
+import { X, ArrowLeft, ArrowRight, Wallet, AlertCircle, Loader2, CheckCircle } from "lucide-react";
 import { useWallet } from "../hooks/useWallet";
+import { createWalletClient, custom, parseUnits } from "viem";
+import { sepolia } from "viem/chains";
+
+// Contract configuration
+const CONTRACT_ADDRESS = "0xcc2149eeca0b6bb7228e7a651987ebb064276463" as const;
+
+// ERC20 approve ABI
+const ERC20_ABI = [
+  {
+    type: "function",
+    name: "approve",
+    inputs: [
+      { name: "spender", type: "address", internalType: "address" },
+      { name: "amount", type: "uint256", internalType: "uint256" }
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "nonpayable"
+  },
+  {
+    type: "function",
+    name: "allowance",
+    inputs: [
+      { name: "owner", type: "address", internalType: "address" },
+      { name: "spender", type: "address", internalType: "address" }
+    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view"
+  }
+] as const;
+
+// createStream ABI
+const CREATE_STREAM_ABI = [
+  {
+    type: "function",
+    name: "createStream",
+    inputs: [
+      { name: "_id", type: "string", internalType: "string" },
+      { name: "_recipient", type: "address", internalType: "address" },
+      { name: "_token", type: "address", internalType: "address" },
+      { name: "_totalAmount", type: "uint256", internalType: "uint256" },
+      { name: "_duration", type: "uint256", internalType: "uint256" },
+      { name: "_cliffDuration", type: "uint256", internalType: "uint256" }
+    ],
+    outputs: [],
+    stateMutability: "nonpayable"
+  }
+] as const;
 import { useTokenBalances } from "../hooks/useTokenBalances";
 import { formatBalance } from "../utils/formatBalance";
 import { MINIMUM_BALANCE_THRESHOLD } from "../utils/tokenBalances";
@@ -20,6 +67,7 @@ interface CreateStreamModalProps {
 type Step = 1 | 2 | 3;
 
 interface FormData {
+  name: string;
   token: string;
   recipient: string;
   amount: string;
@@ -29,18 +77,22 @@ interface FormData {
   startTime: "now" | "custom";
   customDate: string;
   customTime: string;
-  unlockSchedule: "linear" | "stepped" | "custom";
-  stepDays: string;
-  stepAmount: string;
-  allowEarlyClaim: boolean;
-  allowPauseResume: boolean;
-  allowTopUp: boolean;
-  allowThirdParty: boolean;
+}
+
+type TransactionStatus = "idle" | "approving" | "approved" | "creating" | "success" | "error";
+
+interface TransactionState {
+  status: TransactionStatus;
+  error?: string;
+  txHash?: string;
+  approveTxHash?: string;
 }
 
 export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
   const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [transactionState, setTransactionState] = useState<TransactionState>({ status: "idle" });
   const [formData, setFormData] = useState<FormData>({
+    name: "",
     token: "",
     recipient: "",
     amount: "",
@@ -50,23 +102,18 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
     startTime: "now",
     customDate: "",
     customTime: "",
-    unlockSchedule: "stepped",
-    stepDays: "7",
-    stepAmount: "",
-    allowEarlyClaim: true,
-    allowPauseResume: true,
-    allowTopUp: true,
-    allowThirdParty: false,
   });
 
   const wallet = useWallet();
-  const { tokenBalances, loading: balancesLoading, error: balancesError } = useTokenBalances(wallet.address);
+  const { tokenBalances, loading: balancesLoading } = useTokenBalances(wallet.address);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
       setCurrentStep(1);
+      setTransactionState({ status: "idle" });
       setFormData({
+        name: "",
         token: "",
         recipient: "",
         amount: "",
@@ -76,18 +123,11 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
         startTime: "now",
         customDate: "",
         customTime: "",
-        unlockSchedule: "stepped",
-        stepDays: "7",
-        stepAmount: "",
-        allowEarlyClaim: true,
-        allowPauseResume: true,
-        allowTopUp: true,
-        allowThirdParty: false,
       });
     }
   }, [isOpen]);
 
-  const updateFormData = (field: keyof FormData, value: any) => {
+  const updateFormData = (field: keyof FormData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -101,16 +141,6 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
   };
 
 
-  const calculateStepAmount = () => {
-    if (formData.amount && formData.stepDays) {
-      const amount = parseFloat(formData.amount);
-      const duration = parseInt(formData.duration) || 30;
-      const stepDays = parseInt(formData.stepDays);
-      const steps = Math.ceil(duration / stepDays);
-      return (amount / steps).toFixed(2);
-    }
-    return "0";
-  };
 
   const nextStep = () => {
     if (currentStep < 3) setCurrentStep((prev) => (prev + 1) as Step);
@@ -126,6 +156,97 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
       case 2: return "Schedule & Security";
       case 3: return "Review & Deploy";
       default: return "";
+    }
+  };
+
+  const approveToken = async () => {
+    if (!wallet.address || !formData.token || !formData.amount) {
+      setTransactionState({ status: "error", error: "Please fill required fields" });
+      return;
+    }
+
+    try {
+      setTransactionState({ status: "approving" });
+
+      // Create wallet client
+      const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: custom(window.ethereum!)
+      });
+
+      // Convert amount to wei (assuming 18 decimals)
+      const totalAmount = parseUnits(formData.amount, 18);
+
+      // Call approve function on the token contract
+      const hash = await walletClient.writeContract({
+        address: formData.token as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [
+          CONTRACT_ADDRESS, // spender (the stream contract)
+          totalAmount // amount to approve
+        ],
+        account: wallet.address as `0x${string}`
+      });
+
+      setTransactionState({ status: "approved", approveTxHash: hash });
+      console.log("Token approved successfully!", { hash, amount: formData.amount });
+    } catch (error: any) {
+      console.error("Error approving token:", error);
+      setTransactionState({ 
+        status: "error", 
+        error: error.message || "Failed to approve token" 
+      });
+    }
+  };
+
+  const createStream = async () => {
+    if (!wallet.address || !formData.name || !formData.token || !formData.recipient || !formData.amount || !formData.duration) {
+      setTransactionState({ status: "error", error: "Please fill all required fields" });
+      return;
+    }
+
+    try {
+      setTransactionState({ status: "creating" });
+
+      // Create wallet client
+      const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: custom(window.ethereum!)
+      });
+
+      // Generate unique stream ID based on name
+      const streamId = `${formData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      
+      // Convert form data to contract parameters
+      const totalAmount = parseUnits(formData.amount, 18); // Assuming 18 decimals
+      const duration = BigInt(parseInt(formData.duration) * 24 * 60 * 60); // Convert days to seconds
+      const cliffDuration = formData.enableCliff ? BigInt(parseInt(formData.cliffDays) * 24 * 60 * 60) : BigInt(0);
+
+      // Call createStream function
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CREATE_STREAM_ABI,
+        functionName: "createStream",
+        args: [
+          streamId,
+          formData.recipient as `0x${string}`,
+          formData.token as `0x${string}`,
+          totalAmount,
+          duration,
+          cliffDuration
+        ],
+        account: wallet.address as `0x${string}`
+      });
+
+      setTransactionState({ ...transactionState, status: "success", txHash: hash });
+      console.log("Stream created successfully!", { hash, streamId });
+    } catch (error: any) {
+      console.error("Error creating stream:", error);
+      setTransactionState({ 
+        status: "error", 
+        error: error.message || "Failed to create stream" 
+      });
     }
   };
 
@@ -186,6 +307,16 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Stream Name */}
+              <div className="space-y-2">
+                <Label>Stream Name</Label>
+                <Input
+                  placeholder="My Payment Stream"
+                  value={formData.name}
+                  onChange={(e) => updateFormData("name", e.target.value)}
+                />
+              </div>
 
               {/* No tokens available */}
               {wallet.isConnected && tokenBalances.length === 0 && !balancesLoading && (
@@ -290,7 +421,7 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                   <Checkbox
                     id="cliff"
                     checked={formData.enableCliff}
-                    onCheckedChange={(checked) => updateFormData("enableCliff", checked)}
+                    onCheckedChange={(checked: boolean) => updateFormData("enableCliff", checked)}
                   />
                   <Label htmlFor="cliff">Enable cliff</Label>
                   {formData.enableCliff && (
@@ -298,7 +429,7 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                       <Input
                         type="number"
                         value={formData.cliffDays}
-                        onChange={(e) => updateFormData("cliffDays", e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateFormData("cliffDays", e.target.value)}
                         className="w-16 h-8"
                       />
                       <span className="text-sm">days</span>
@@ -317,7 +448,7 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 <h3 className="font-medium">START DATE</h3>
                 <RadioGroup
                   value={formData.startTime}
-                  onValueChange={(value) => updateFormData("startTime", value)}
+                  onValueChange={(value: string) => updateFormData("startTime", value)}
                   className="grid grid-cols-2 gap-4"
                 >
                   <Card className={formData.startTime === "now" ? "ring-2 ring-primary" : ""}>
@@ -355,123 +486,72 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 </RadioGroup>
               </div>
 
-              {/* Unlock Schedule */}
-              <div className="space-y-3">
-                <h3 className="font-medium">UNLOCK SCHEDULE</h3>
-                <RadioGroup
-                  value={formData.unlockSchedule}
-                  onValueChange={(value) => updateFormData("unlockSchedule", value)}
-                  className="flex gap-4"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="linear" id="linear" />
-                    <Label htmlFor="linear">Linear</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="stepped" id="stepped" />
-                    <Label htmlFor="stepped">Stepped</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="custom" id="customCurve" />
-                    <Label htmlFor="customCurve">Custom Curve</Label>
-                  </div>
-                </RadioGroup>
-
-                {formData.unlockSchedule === "stepped" && (
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex gap-4 mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">Steps:</span>
-                          <Input
-                            type="number"
-                            value={formData.stepDays}
-                            onChange={(e) => updateFormData("stepDays", e.target.value)}
-                            className="w-16 h-8"
-                          />
-                          <span className="text-sm">days</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">Unlock:</span>
-                          <span className="text-sm font-medium">
-                            {calculateStepAmount()} {(() => {
-                              const selectedToken = tokenBalances.find(t => t.address === formData.token);
-                              return selectedToken?.symbol || "Token";
-                            })()} per step
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Progress visualization */}
-                      <div className="relative">
-                        <div className="h-2 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500 w-full"></div>
-                        </div>
-                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                          <span>Start</span>
-                          <span>Day {formData.stepDays}</span>
-                          <span>Day {parseInt(formData.stepDays) * 2}</span>
-                          <span>Day {parseInt(formData.stepDays) * 3}</span>
-                          <span>Day {parseInt(formData.stepDays) * 4}</span>
-                          <span>End</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-              {/* Security & Permissions */}
-              <div className="space-y-3">
-                <h3 className="font-medium">SECURITY & PERMISSIONS</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="earlyClaim"
-                      checked={formData.allowEarlyClaim}
-                      onCheckedChange={(checked) => updateFormData("allowEarlyClaim", checked)}
-                    />
-                    <Label htmlFor="earlyClaim">Allow recipient to claim early (with penalty)</Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="pauseResume"
-                      checked={formData.allowPauseResume}
-                      onCheckedChange={(checked) => updateFormData("allowPauseResume", checked)}
-                    />
-                    <Label htmlFor="pauseResume">Allow sender to pause/resume stream</Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="topUp"
-                      checked={formData.allowTopUp}
-                      onCheckedChange={(checked) => updateFormData("allowTopUp", checked)}
-                    />
-                    <Label htmlFor="topUp">Allow sender to top-up stream amount</Label>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="thirdParty"
-                      checked={formData.allowThirdParty}
-                      onCheckedChange={(checked) => updateFormData("allowThirdParty", checked)}
-                    />
-                    <Label htmlFor="thirdParty">Allow third-party withdrawals (whitelist required)</Label>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
           {currentStep === 3 && (
             <div className="space-y-6">
+              {/* Transaction Status */}
+              {transactionState.status !== "idle" && (
+                <Card className={`${
+                  transactionState.status === "error" ? "border-red-200 bg-red-50" :
+                  transactionState.status === "success" ? "border-green-200 bg-green-50" :
+                  "border-blue-200 bg-blue-50"
+                }`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2">
+                      {transactionState.status === "creating" && (
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      )}
+                      {transactionState.status === "success" && (
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      )}
+                      {transactionState.status === "error" && (
+                        <AlertCircle className="w-4 h-4 text-red-600" />
+                      )}
+                      <span className={`text-sm font-medium ${
+                        transactionState.status === "error" ? "text-red-800" :
+                        transactionState.status === "success" ? "text-green-800" :
+                        "text-blue-800"
+                      }`}>
+                        {transactionState.status === "approving" ? "Approving Token..." :
+                         transactionState.status === "approved" ? "Token Approved - Ready to Create Stream" :
+                         transactionState.status === "creating" ? "Creating Stream..." :
+                         transactionState.status === "success" ? "Stream Created Successfully!" :
+                         "Transaction Failed"}
+                      </span>
+                    </div>
+                    {transactionState.error && (
+                      <p className="text-sm text-red-700 mt-1">
+                        {transactionState.error}
+                      </p>
+                    )}
+                    {transactionState.approveTxHash && (
+                      <p className="text-sm text-green-700 mt-1">
+                        Approve Tx: <code className="bg-green-100 px-1 rounded text-xs">
+                          {transactionState.approveTxHash.slice(0, 10)}...{transactionState.approveTxHash.slice(-8)}
+                        </code>
+                      </p>
+                    )}
+                    {transactionState.txHash && (
+                      <p className="text-sm text-green-700 mt-1">
+                        Create Stream Tx: <code className="bg-green-100 px-1 rounded text-xs">
+                          {transactionState.txHash.slice(0, 10)}...{transactionState.txHash.slice(-8)}
+                        </code>
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
               {/* Stream Summary */}
               <Card>
                 <CardContent className="p-4">
                   <h3 className="font-medium mb-3">STREAM SUMMARY</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex justify-between">
+                      <span>Name:</span>
+                      <span className="font-medium">{formData.name || "Unnamed Stream"}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span>Token:</span>
                       <span className="font-medium">{(() => {
@@ -491,12 +571,10 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                     </div>
                     <div className="flex justify-between">
                       <span>Duration:</span>
-                      <span className="font-medium">{formData.duration || "0"} days</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Unlock:</span>
                       <span className="font-medium">
-                        {formData.unlockSchedule === "stepped" ? `Every ${formData.stepDays} days` : "Linear"}
+                        {formData.duration && formData.duration !== "" && formData.duration !== "0" 
+                          ? `${formData.duration} days` 
+                          : "Not set"}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -513,55 +591,38 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 </CardContent>
               </Card>
 
-              {/* Transaction Breakdown */}
-              <Card>
-                <CardContent className="p-4">
-                  <h3 className="font-medium mb-3">TRANSACTION BREAKDOWN</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Stream Amount:</span>
-                      <span className="font-medium">{formData.amount || "0"} {(() => {
-                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
-                        return selectedToken?.symbol || "Token";
-                      })()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Network Fee:</span>
-                      <span className="font-medium">4.50 USD</span>
-                    </div>
-                    <hr className="my-2" />
-                    <div className="flex justify-between font-medium">
-                      <span>Total Required:</span>
-                      <span>
-                        {(parseFloat(formData.amount || "0") + 4.5).toFixed(2)} {(() => {
+              {/* Wallet Actions - Hide when transaction is successful */}
+              {transactionState.status !== "success" && (
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="font-medium mb-3">APPROVE</h3>
+                    <div className="p-3 bg-muted rounded-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Approve {(() => {
                           const selectedToken = tokenBalances.find(t => t.address === formData.token);
                           return selectedToken?.symbol || "Token";
-                        })()}
-                      </span>
+                        })()} spend</span>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={approveToken}
+                          disabled={transactionState.status === "approving" || transactionState.status === "approved" || transactionState.status === "creating"}
+                        >
+                          {transactionState.status === "approving" && (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          )}
+                          {transactionState.status === "approved" && (
+                            <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
+                          )}
+                          {transactionState.status === "approving" ? "Approving..." :
+                           transactionState.status === "approved" ? "Approved" :
+                           "Sign Transaction"}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Wallet Actions */}
-              <Card>
-                <CardContent className="p-4">
-                  <h3 className="font-medium mb-3">WALLET ACTIONS</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                      <span className="text-sm">1. Approve {(() => {
-                        const selectedToken = tokenBalances.find(t => t.address === formData.token);
-                        return selectedToken?.symbol || "Token";
-                      })()} spend</span>
-                      <Button size="sm" variant="outline">Sign Transaction</Button>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                      <span className="text-sm">2. Create stream</span>
-                      <Button size="sm">Deploy Stream</Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </div>
@@ -569,7 +630,8 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t">
           <div className="flex gap-2">
-            {currentStep > 1 && (
+            {/* Hide Back button when transaction is successful */}
+            {currentStep > 1 && transactionState.status !== "success" && (
               <Button variant="outline" onClick={prevStep}>
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
@@ -589,8 +651,21 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             ) : (
-              <Button onClick={onClose}>
-                Create Stream
+              <Button 
+                onClick={transactionState.status === "success" ? onClose : createStream}
+                disabled={transactionState.status === "creating" || transactionState.status === "approving" || transactionState.status === "idle"}
+                className={transactionState.status === "success" ? "bg-green-600 hover:bg-green-700 w-full" : ""}
+              >
+                {transactionState.status === "creating" && (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                )}
+                {transactionState.status === "success" && (
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                )}
+                {transactionState.status === "creating" ? "Creating Stream..." :
+                 transactionState.status === "success" ? "Stream Created!" :
+                 transactionState.status === "approved" ? "Create Stream" :
+                 "Approve Token First"}
               </Button>
             )}
           </div>

@@ -55,3 +55,12 @@ Run `npm run dev` to start the development server.
     reference: https://learn.deeplearning.ai/courses/claude-code-a-highly-agentic-coding-assistant/lesson/vvq28/creating-web-app-based-on-a-figma-mockup
 
     front-end iterations. solving the wallet connected issues
+
+
+    test prompt:
+
+    life cyle work flow
+
+
+        1: normal workflow work
+        2: edge case check
