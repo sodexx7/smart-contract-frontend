@@ -2,3 +2,6 @@ cache/
 out/
 
 .env
+
+temp_ignore.md
+temp

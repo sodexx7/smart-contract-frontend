@@ -12,13 +12,83 @@ contract CreateTwoStreamsScript is Script {
 
     // Stream configuration
     uint256 constant STREAM_AMOUNT = 1000 * 10 ** 6; // 1000 USDC (6 decimals)
-    uint256 constant STREAM_DURATION = 30 days;
-    uint256 constant CLIFF_DURATION = 7 days;
+    uint256 constant STREAM_DURATION = 0.5 days;
+    uint256 constant CLIFF_DURATION = 0.2 days;
+
+    function getTodayDate() internal view returns (string memory) {
+        uint256 timestamp = block.timestamp;
+        uint256 daysSinceEpoch = timestamp / 86400;
+
+        // Calculate year (approximate)
+        uint256 year = 1970;
+        uint256 all_days = daysSinceEpoch;
+
+        // Account for leap years more accurately
+        while (all_days >= 365) {
+            if (isLeapYear(year)) {
+                if (all_days >= 366) {
+                    all_days -= 366;
+                    year++;
+                } else {
+                    break;
+                }
+            } else {
+                all_days -= 365;
+                year++;
+            }
+        }
+
+        // Calculate month and day
+        uint256 month = 1;
+        uint256[12] memory daysInMonth = [
+            uint256(31),
+            28,
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31
+        ];
+
+        if (isLeapYear(year)) {
+            daysInMonth[1] = 29;
+        }
+
+        while (all_days >= daysInMonth[month - 1]) {
+            all_days -= daysInMonth[month - 1];
+            month++;
+        }
+
+        uint256 day = all_days + 1;
+
+        // Format as YYYYMMDD
+        return
+            string(
+                abi.encodePacked(
+                    vm.toString(year),
+                    month < 10 ? "0" : "",
+                    vm.toString(month),
+                    day < 10 ? "0" : "",
+                    vm.toString(day)
+                )
+            );
+    }
+
+    function isLeapYear(uint256 year) internal pure returns (bool) {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    }
 
     function run() external {
         // Load private keys from environment
-        uint256 senderPrivateKey = vm.envUint("USER_PRIVATE_KEY");
-        uint256 recipientPrivateKey = vm.envUint("USER_PRIVATE_KEY_1");
+        uint256 senderPrivateKey = vm.envUint("front_end_wallet_try3");
+        // uint256 recipientPrivateKey = vm.envUint("front_end_wallet_try4");
+        // uint256 recipientPrivateKey = vm.envUint("front_end_wallet_try5");
+        uint256 recipientPrivateKey = vm.envUint("front_end_wallet_try6");
 
         // Derive addresses from private keys
         address sender = vm.addr(senderPrivateKey);
@@ -31,22 +101,12 @@ contract CreateTwoStreamsScript is Script {
         console.log("MockUSDC:", MOCK_USDC);
         console.log("");
 
+        vm.startBroadcast(sender);
         // Initialize contracts
         StreamBoost streamBoost = StreamBoost(STREAM_BOOST);
         MockERC20 usdc = MockERC20(MOCK_USDC);
 
-        // Start broadcasting with sender's private key
-        vm.startBroadcast(senderPrivateKey);
-
-        // Check and mint USDC if sender doesn't have enough
-        uint256 senderBalance = usdc.balanceOf(sender);
         uint256 totalNeeded = STREAM_AMOUNT * 2; // For both streams
-
-        if (senderBalance < totalNeeded) {
-            console.log("Minting USDC for sender...");
-            usdc.mint(sender, totalNeeded);
-            console.log("Minted", totalNeeded / 10 ** 6, "USDC to sender");
-        }
 
         // Approve StreamBoost to spend USDC
         console.log("Approving USDC spending...");
@@ -54,7 +114,15 @@ contract CreateTwoStreamsScript is Script {
 
         // Create Stream 1: WITHOUT cliff
         console.log("Creating Stream 1 (No Cliff)...");
-        string memory streamId1 = "stream-no-cliff-001";
+        string memory streamId1 = string(
+            abi.encodePacked(
+                "stream-no-cliff-",
+                getTodayDate(),
+                "-",
+                vm.toString(block.timestamp)
+            )
+        );
+
         streamBoost.createStream(
             streamId1,
             recipient,
@@ -71,7 +139,14 @@ contract CreateTwoStreamsScript is Script {
 
         // Create Stream 2: WITH cliff
         console.log("Creating Stream 2 (With Cliff)...");
-        string memory streamId2 = "stream-with-cliff-001";
+        string memory streamId2 = string(
+            abi.encodePacked(
+                "stream-with-cliff-",
+                getTodayDate(),
+                "-",
+                vm.toString(block.timestamp)
+            )
+        );
         streamBoost.createStream(
             streamId2,
             recipient,
@@ -161,7 +236,7 @@ contract CreateTwoStreamsScript is Script {
         console.log("=== Success! Two streams created successfully ===");
         console.log("Stream IDs:");
         console.log("1.", streamId1, "(no cliff)");
-        console.log("2.", streamId2, "(7-day cliff)");
+        console.log("2.", streamId2, "( cliff)");
         console.log("");
         console.log("Next steps for recipient:");
         console.log("- Wait for cliff period to end for stream 2");

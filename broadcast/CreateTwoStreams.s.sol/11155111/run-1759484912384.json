@@ -1,0 +1,85 @@
+{
+  "transactions": [
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "MockERC20",
+      "contractAddress": "0x2246008845d7385a7c5c9dacea09a36823fbcb88",
+      "function": "approve(address,uint256)",
+      "arguments": [
+        "0xcc2149eeca0B6Bb7228E7A651987ebB064276463",
+        "2000000000"
+      ],
+      "transaction": {
+        "from": "0xc29de8ad0a5d07aa5b51020883358bdf6b60ce2e",
+        "to": "0x2246008845d7385a7c5c9dacea09a36823fbcb88",
+        "gas": "0x108ad",
+        "value": "0x0",
+        "input": "0x095ea7b3000000000000000000000000cc2149eeca0b6bb7228e7a651987ebb0642764630000000000000000000000000000000000000000000000000000000077359400",
+        "nonce": "0x0",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    },
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "StreamBoost",
+      "contractAddress": "0xcc2149eeca0b6bb7228e7a651987ebb064276463",
+      "function": "createStream(string,address,address,uint256,uint256,uint256)",
+      "arguments": [
+        "stream-no-cliff-202510031759484892",
+        "0x8E6A9D8CB283C3b18898A02B7a4490918629F275",
+        "0x2246008845d7385a7C5c9dacea09A36823FbcB88",
+        "1000000000",
+        "172800",
+        "0"
+      ],
+      "transaction": {
+        "from": "0xc29de8ad0a5d07aa5b51020883358bdf6b60ce2e",
+        "to": "0xcc2149eeca0b6bb7228e7a651987ebb064276463",
+        "gas": "0xcaa31",
+        "value": "0x0",
+        "input": "0x3e2436d600000000000000000000000000000000000000000000000000000000000000c00000000000000000000000008e6a9d8cb283c3b18898a02b7a4490918629f2750000000000000000000000002246008845d7385a7c5c9dacea09a36823fbcb88000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000002a3000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002273747265616d2d6e6f2d636c6966662d323032353130303331373539343834383932000000000000000000000000000000000000000000000000000000000000",
+        "nonce": "0x1",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    },
+    {
+      "hash": null,
+      "transactionType": "CALL",
+      "contractName": "StreamBoost",
+      "contractAddress": "0xcc2149eeca0b6bb7228e7a651987ebb064276463",
+      "function": "createStream(string,address,address,uint256,uint256,uint256)",
+      "arguments": [
+        "stream-with-clif-202510031759484892",
+        "0x8E6A9D8CB283C3b18898A02B7a4490918629F275",
+        "0x2246008845d7385a7C5c9dacea09A36823FbcB88",
+        "1000000000",
+        "172800",
+        "86400"
+      ],
+      "transaction": {
+        "from": "0xc29de8ad0a5d07aa5b51020883358bdf6b60ce2e",
+        "to": "0xcc2149eeca0b6bb7228e7a651987ebb064276463",
+        "gas": "0xb669b",
+        "value": "0x0",
+        "input": "0x3e2436d600000000000000000000000000000000000000000000000000000000000000c00000000000000000000000008e6a9d8cb283c3b18898a02b7a4490918629f2750000000000000000000000002246008845d7385a7c5c9dacea09a36823fbcb88000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000002a3000000000000000000000000000000000000000000000000000000000000015180000000000000000000000000000000000000000000000000000000000000002373747265616d2d776974682d636c69662d3230323531303033313735393438343839320000000000000000000000000000000000000000000000000000000000",
+        "nonce": "0x2",
+        "chainId": "0xaa36a7"
+      },
+      "additionalContracts": [],
+      "isFixedGasLimit": false
+    }
+  ],
+  "receipts": [],
+  "libraries": [],
+  "pending": [],
+  "returns": {},
+  "timestamp": 1759484912384,
+  "chain": 11155111,
+  "commit": "91c0d6c"
+}

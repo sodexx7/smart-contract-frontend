@@ -7,7 +7,6 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 contract StreamBoost is Ownable {
     enum StreamStatus {
-        SCHEDULED,
         ACTIVE,
         PAUSED,
         COMPLETED,
@@ -37,7 +36,6 @@ contract StreamBoost is Ownable {
         StreamStatus status;
     }
 
-    // @audit make sense the ProtocolStats
     struct ProtocolStats {
         uint256 totalValueLocked;
         uint256 totalActiveStreams;
@@ -46,7 +44,6 @@ contract StreamBoost is Ownable {
         uint256 lastUpdated;
     }
 
-    // @audit make sense the AssetState
     struct AssetState {
         string symbol;
         uint256 price;
@@ -155,7 +152,6 @@ contract StreamBoost is Ownable {
         emit StreamClaimed(_streamId, _amount);
     }
 
-    // @audit should check the cliff logci
     function canClaimDuringCliff(
         string memory _streamId
     ) public view returns (bool canClaimPrincipal) {
@@ -359,7 +355,6 @@ contract StreamBoost is Ownable {
         });
     }
 
-    // @audit make sense the actual protocolStats meaning
     function setMockProtocolStats(
         uint256 _totalValueLocked,
         uint256 _totalActiveStreams,

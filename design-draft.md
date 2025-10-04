@@ -70,8 +70,8 @@ vestedAmount = (totalAmount * elapsedTime) / duration
 After 6 months of a 1-year, 10,000 USDC stream:
 
 | Progress | Vested Amount | Available to Claim (if nothing claimed yet) |
-| -------- | ------------- | -------------------------------------------- |
-| 50%      | 5,000 USDC    | 5,000 USDC                                   |
+| -------- | ------------- | ------------------------------------------- |
+| 50%      | 5,000 USDC    | 5,000 USDC                                  |
 
 **Recipient Claiming Strategy**:
 
@@ -90,7 +90,6 @@ The StreamBoost protocol uses a **natural completion model** where streams run u
 
 **Stream States**:
 
-- **SCHEDULED**: Stream created but not yet started
 - **ACTIVE**: Stream is running and tokens are vesting
 - **PAUSED**: Stream temporarily paused by sender (vesting stops)
 - **COMPLETED**: All tokens have been claimed or stream duration has ended
@@ -121,7 +120,7 @@ The StreamBoost protocol uses a **natural completion model** where streams run u
 **Scenario 2: Early Full Claim**
 
 - Stream: 10,000 USDC over 365 days
-- Day 200: 5,479 USDC vested (200/365 * 10,000)
+- Day 200: 5,479 USDC vested (200/365 \* 10,000)
 - Recipient claims all available 5,479 USDC
 - Stream continues until day 365 when remaining 4,521 USDC can be claimed
 
@@ -408,13 +407,7 @@ type Stream = {
 type TxRecord = {
   id: string;
   label: string;
-  type:
-    | "approve"
-    | "createStream"
-    | "claim"
-    | "pause"
-    | "resume"
-    | "topUp";
+  type: "approve" | "createStream" | "claim" | "pause" | "resume" | "topUp";
   status: "idle" | "signing" | "pending" | "confirmed" | "failed";
   errorCode?: string;
   timestamps: Partial<Record<"submitted" | "confirmed" | "failed", number>>;
