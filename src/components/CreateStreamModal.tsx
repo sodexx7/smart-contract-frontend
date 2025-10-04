@@ -57,7 +57,7 @@ const CREATE_STREAM_ABI = [
 ] as const;
 import { useTokenBalances } from "../hooks/useTokenBalances";
 import { formatBalance } from "../utils/formatBalance";
-import { MINIMUM_BALANCE_THRESHOLD } from "../utils/tokenBalances";
+import { MINIMUM_BALANCE_THRESHOLD, TOKEN_INFO, getTokenAddressesForNetwork, NETWORK_TOKEN_ADDRESSES } from "../utils/tokenBalances";
 
 interface CreateStreamModalProps {
   isOpen: boolean;
@@ -174,8 +174,13 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
         transport: custom(window.ethereum!)
       });
 
-      // Convert amount to wei (assuming 18 decimals)
-      const totalAmount = parseUnits(formData.amount, 18);
+      // Get token decimals based on selected token
+      const selectedToken = tokenBalances.find(t => t.address === formData.token);
+      const tokenSymbol = selectedToken?.symbol || 'USDC';
+      const tokenDecimals = TOKEN_INFO[tokenSymbol as keyof typeof TOKEN_INFO]?.decimals || 6;
+      
+      // Convert amount to proper token units
+      const totalAmount = parseUnits(formData.amount, tokenDecimals);
 
       // Call approve function on the token contract
       const hash = await walletClient.writeContract({
@@ -218,8 +223,13 @@ export function CreateStreamModal({ isOpen, onClose }: CreateStreamModalProps) {
       // Generate unique stream ID based on name
       const streamId = `${formData.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
       
+      // Get token decimals based on selected token
+      const selectedToken = tokenBalances.find(t => t.address === formData.token);
+      const tokenSymbol = selectedToken?.symbol || 'USDC';
+      const tokenDecimals = TOKEN_INFO[tokenSymbol as keyof typeof TOKEN_INFO]?.decimals || 6;
+      
       // Convert form data to contract parameters
-      const totalAmount = parseUnits(formData.amount, 18); // Assuming 18 decimals
+      const totalAmount = parseUnits(formData.amount, tokenDecimals);
       const duration = BigInt(parseInt(formData.duration) * 24 * 60 * 60); // Convert days to seconds
       const cliffDuration = formData.enableCliff ? BigInt(parseInt(formData.cliffDays) * 24 * 60 * 60) : BigInt(0);
 

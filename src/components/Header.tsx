@@ -9,6 +9,8 @@ import {
 import { ChevronDown, Sun, Moon, Wallet, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useWallet } from "../hooks/useWallet";
+import { useStreams } from "../hooks/useStreams";
+import { ContractService } from "../services/contract";
 
 export function Header() {
   const { theme, setTheme } = useTheme();
@@ -23,6 +25,7 @@ export function Header() {
     formatAddress,
     error,
   } = useWallet();
+  const { streams } = useStreams();
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
@@ -31,6 +34,63 @@ export function Header() {
   const handleNetworkChange = (value: string) => {
     switchNetwork(value as any);
   };
+
+  // Calculate header stats
+  const getHeaderStats = () => {
+    // Calculate TVL (Total Value Locked) - sum of all stream total amounts
+    const tvl = streams.reduce((total, stream) => {
+      const totalFormatted = ContractService.formatTokenAmount(stream.totalAmount, 6);
+      const amount = parseFloat(totalFormatted);
+      return total + (isNaN(amount) ? 0 : amount);
+    }, 0);
+
+    // Count total streams
+    const totalStreams = streams.length;
+
+    // Calculate last update time for connected address's streams
+    const userStreams = streams.filter(stream => 
+      address && (
+        stream.sender.toLowerCase() === address.toLowerCase() ||
+        stream.recipient.toLowerCase() === address.toLowerCase()
+      )
+    );
+    
+    const lastUpdate = userStreams.length > 0 ? 
+      Math.max(...userStreams.map(stream => stream.createdAt || 0)) : 0;
+    
+    const timeSinceUpdate = lastUpdate > 0 ? 
+      Math.floor((Date.now() / 1000 - lastUpdate) / 60) : 0; // minutes ago
+    
+    const formatLastUpdate = (minutes: number) => {
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    };
+
+    // Format TVL for display with proper number formatting
+    const formatTVL = (amount: number) => {
+      if (amount >= 1000000000) {
+        return `$${(amount / 1000000000).toFixed(2)}B`;
+      } else if (amount >= 1000000) {
+        return `$${(amount / 1000000).toFixed(2)}M`;
+      } else if (amount >= 1000) {
+        return `$${(amount / 1000).toFixed(1)}K`;
+      } else {
+        return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
+    };
+
+    return {
+      tvl: formatTVL(tvl),
+      totalStreams,
+      lastUpdate: formatLastUpdate(timeSinceUpdate)
+    };
+  };
+
+  const headerStats = getHeaderStats();
 
   return (
     <>
@@ -45,9 +105,9 @@ export function Header() {
           {/* Main content area - aligned with stream list */}
           <div className="flex-1 max-w-6xl px-6 flex items-center justify-between">
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
-              <span>TVL: $125K</span>
-              <span>Streams: 48</span>
-              <span>Avg APR: 6.7%</span>
+              <span>TVL: {headerStats.tvl}</span>
+              <span>Streams: {headerStats.totalStreams}</span>
+              <span>Last Update: {headerStats.lastUpdate}</span>
             </div>
 
             <div className="flex items-center gap-3">

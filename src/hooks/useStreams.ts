@@ -9,7 +9,7 @@ interface UseStreamsResult {
   refetch: () => Promise<void>;
 }
 
-export function useStreams(): UseStreamsResult {
+export function useStreams(refreshTrigger?: number): UseStreamsResult {
   const [streams, setStreams] = useState<StreamData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function useStreams(): UseStreamsResult {
 
   useEffect(() => {
     fetchStreams();
-  }, []);
+  }, [refreshTrigger]);
 
   return {
     streams,

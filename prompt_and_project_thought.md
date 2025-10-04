@@ -1,6 +1,6 @@
 ## 1. Main goal
 
-This project aims for creating front-end integrating with smart contracts by using AI(claude). For my own purpose, Firstly, is to create front-end efficiently by leverage AI abilites, to be specific, not only increasing the front-end development speed but also delegating so many works to AI, for example, some stuff that will spend me so much time to familiar or some work I am resent to do. Secondly, is the preparation for future usage, such as a hackathon project or other projects needing the front-end, which can helpe me save the time in developing front-end or do some works I havn't the abilites to implement. Thirdly, is the practice by using AI.
+This project aims for creating front-end integrating with smart contracts by using AI(claude). For my own purpose, Firstly, is to create front-end efficiently by leverage AI abilites, to be specific, not only increasing the front-end development speed but also delegating so many works to AI, for example, some stuff that will spend me so much time to familiar or some work I am resent to do. Secondly, is the preparation for future usage, such as a hackathon project or other projects needing the front-end, which can helpe me save the time in developing front-end or do some works I havn't the abilites to implement. Thirdly, is the practice by using AI. Or aware the AI's limitations, make sense how to use it effiectively under the limitations.
 
 Initially, I haven't the business logic for this project, however, from the front-end prospective that there exists some commond logics. Some of my thoughts as below.
 
@@ -14,7 +14,7 @@ Initially, I haven't the business logic for this project, however, from the fron
 
 ### 2.1 business logic confirm
 
-Firstly, I didn't have a clear business model, just want to implement the front-end as above. So ask AI to supply one business model satisfly above requirements. After multiply conversations with different AI, Finally, I decided pick up [design-draft](design-draft.md). Of course, the draft was refactored many times, such as deleted the penalities or boost APY logic, whose logic AI doesn't implement in a appropriately way.
+Firstly, I didn't have a clear business model, just want to implement the front-end as above. So ask AI to supply one business model satisfly above requirements. After multiply conversations with different AI, Finally, I decided pick up [design-draft](design-draft.md). Of course, the draft was refactored many times, such as deleted the penalities or boost APY logic, whose logic AI doesn't implement in an appropriately way.
 
 ### 2.2 draft the front-end
 
@@ -75,4 +75,10 @@ figma
 
         front-end related tec stack
 
-## 3. Notices or best practice?
+## 3. Notices or best practice? limitation or should aware something?
+
+Limitations
+
+1. Back-end
+   smart contracts.
+   This project doesn't aim for building a comprehensive smart contracts, but for completing a relative comprehensive front-end by interacting with smart contracts. As you can see, there is only one smart contract, lacking different smart contract modules working together implmenting the core logic.

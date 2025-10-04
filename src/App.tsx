@@ -12,6 +12,9 @@ export default function App() {
   const [streamPerspective, setStreamPerspective] = useState<
     "sender" | "recipient"
   >("sender");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [outgoingStatusFilter, setOutgoingStatusFilter] = useState<string>('all');
+  const [incomingStatusFilter, setIncomingStatusFilter] = useState<string>('all');
 
   const openCreateStream = () => {
     setIsCreateStreamOpen(true);
@@ -23,6 +26,16 @@ export default function App() {
 
   const navigateToTab = (tab: string) => {
     setActiveTab(tab);
+  };
+
+  const handleStatusFilter = (streamType: 'outgoing' | 'incoming', status: string) => {
+    if (streamType === 'outgoing') {
+      setOutgoingStatusFilter(status);
+    } else {
+      setIncomingStatusFilter(status);
+    }
+    // Switch to the relevant tab when filtering
+    setActiveTab(streamType);
   };
 
   const openStreamDetail = (
@@ -37,6 +50,10 @@ export default function App() {
     setSelectedStream(null);
   };
 
+  const handleStreamUpdate = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -44,11 +61,17 @@ export default function App() {
         <Sidebar
           onNavigateToCreateStream={openCreateStream}
           onNavigateToTab={navigateToTab}
+          onStatusFilter={handleStatusFilter}
         />
         <MainContent
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onStreamClick={openStreamDetail}
+          refreshTrigger={refreshTrigger}
+          outgoingStatusFilter={outgoingStatusFilter}
+          incomingStatusFilter={incomingStatusFilter}
+          onOutgoingStatusFilterChange={setOutgoingStatusFilter}
+          onIncomingStatusFilterChange={setIncomingStatusFilter}
         />
       </div>
       <CreateStreamModal
@@ -59,6 +82,7 @@ export default function App() {
         stream={selectedStream}
         perspective={streamPerspective}
         onClose={closeStreamDetail}
+        onStreamUpdate={handleStreamUpdate}
       />
     </div>
   );

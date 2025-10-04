@@ -1,4 +1,4 @@
-import { createPublicClient, http, formatUnits } from "viem";
+import { createPublicClient, createWalletClient, http, formatUnits, custom } from "viem";
 import { sepolia } from "viem/chains";
 
 // Contract configuration
@@ -84,6 +84,30 @@ const CONTRACT_ABI = [
     outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "pauseStream",
+    inputs: [{ name: "_streamId", type: "string", internalType: "string" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "mockSimulateStreamFailure",
+    inputs: [{ name: "_streamId", type: "string", internalType: "string" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "claimStream",
+    inputs: [
+      { name: "_streamId", type: "string", internalType: "string" },
+      { name: "_amount", type: "uint256", internalType: "uint256" }
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
 ] as const;
 
 // Create public client
@@ -92,13 +116,45 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL),
 });
 
-// Stream status enum mapping
+// Enhanced stream status enum mapping
 const STREAM_STATUS = {
-  0: "active",
-  1: "paused",
-  2: "cancelled",
+  1: "active",
+  2: "paused",
   3: "completed",
+  4: "cancelled",
 } as const;
+
+// Stream status type
+export type StreamStatus = 'active' | 'paused' | 'completed' | 'cancelled';
+
+// Stream direction type  
+export type StreamDirection = 'outgoing' | 'incoming';
+
+// Helper to determine stream direction based on user address
+export const getStreamDirection = (userAddress: string, stream: { sender: string; recipient: string }): StreamDirection => {
+  return userAddress.toLowerCase() === stream.sender.toLowerCase() ? 'outgoing' : 'incoming';
+};
+
+// Status display helpers
+export const getStatusVariant = (status: StreamStatus) => {
+  switch (status) {
+    case 'active': return 'default';
+    case 'paused': return 'secondary'; 
+    case 'completed': return 'outline';
+    case 'cancelled': return 'destructive';
+    default: return 'outline';
+  }
+};
+
+export const getStatusColor = (status: StreamStatus) => {
+  switch (status) {
+    case 'active': return 'text-green-600';
+    case 'paused': return 'text-yellow-600';
+    case 'completed': return 'text-blue-600';
+    case 'cancelled': return 'text-red-600';
+    default: return 'text-gray-600';
+  }
+};
 
 export interface StreamData {
   id: string;
@@ -108,6 +164,7 @@ export interface StreamData {
   totalAmount: bigint;
   claimedAmount: bigint;
   claimableAmount: bigint;
+  remainingAmount: bigint;
   progress: number;
   status: string;
   startTime: number;
@@ -160,7 +217,7 @@ export class ContractService {
    */
   static async getStream(streamId: string): Promise<StreamData | null> {
     try {
-      // Get stream data and claimable amount in parallel
+      // Get stream data, claimable amount, and progress in parallel
       const [streamResult, claimableResult, progressResult] = await Promise.all(
         [
           publicClient.readContract({
@@ -187,6 +244,9 @@ export class ContractService {
       const stream = streamResult;
       const claimableAmount = claimableResult;
       const progress = Number(progressResult) / 100; // Convert from basis points to percentage
+      
+      // Calculate remaining amount: totalAmount - claimedAmount - claimableAmount
+      const remainingAmount = stream.financials.totalAmount - stream.financials.claimedAmount - claimableAmount;
 
       return {
         id: stream.id,
@@ -196,6 +256,7 @@ export class ContractService {
         totalAmount: stream.financials.totalAmount,
         claimedAmount: stream.financials.claimedAmount,
         claimableAmount,
+        remainingAmount,
         progress,
         status:
           STREAM_STATUS[stream.status as keyof typeof STREAM_STATUS] ||
@@ -265,5 +326,169 @@ export class ContractService {
 
     const minutes = Math.floor(timeLeft / 60);
     return `${minutes}m left`;
+  }
+
+  /**
+   * Pause a stream
+   */
+  static async pauseStream(streamId: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+      // Check if wallet is available
+      if (!window.ethereum) {
+        return { success: false, error: "Wallet not found. Please install MetaMask or another wallet." };
+      }
+
+      // Create wallet client
+      const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: custom(window.ethereum),
+      });
+
+      // Get the connected account
+      const [account] = await walletClient.getAddresses();
+      if (!account) {
+        return { success: false, error: "No account connected. Please connect your wallet." };
+      }
+
+      // Execute the pauseStream transaction
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "pauseStream",
+        args: [streamId],
+        account,
+      });
+
+      console.log("Pause stream transaction hash:", hash);
+      return { success: true, txHash: hash };
+    } catch (error) {
+      console.error("Error pausing stream:", error);
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.message.includes("User rejected")) {
+          return { success: false, error: "Transaction was rejected by user." };
+        }
+        if (error.message.includes("insufficient funds")) {
+          return { success: false, error: "Insufficient funds for transaction." };
+        }
+        return { success: false, error: error.message };
+      }
+      
+      return { success: false, error: "An unknown error occurred while pausing the stream." };
+    }
+  }
+
+  /**
+   * Cancel a stream
+   */
+  static async cancelStream(streamId: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+      // Check if wallet is available
+      if (!window.ethereum) {
+        return { success: false, error: "Wallet not found. Please install MetaMask or another wallet." };
+      }
+
+      // Create wallet client
+      const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: custom(window.ethereum),
+      });
+
+      // Get the connected account
+      const [account] = await walletClient.getAddresses();
+      if (!account) {
+        return { success: false, error: "No account connected. Please connect your wallet." };
+      }
+
+      // Execute the mockSimulateStreamFailure transaction (which cancels the stream)
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "mockSimulateStreamFailure",
+        args: [streamId],
+        account,
+      });
+
+      console.log("Cancel stream transaction hash:", hash);
+      return { success: true, txHash: hash };
+    } catch (error) {
+      console.error("Error canceling stream:", error);
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.message.includes("User rejected")) {
+          return { success: false, error: "Transaction was rejected by user." };
+        }
+        if (error.message.includes("insufficient funds")) {
+          return { success: false, error: "Insufficient funds for transaction." };
+        }
+        return { success: false, error: error.message };
+      }
+      
+      return { success: false, error: "An unknown error occurred while canceling the stream." };
+    }
+  }
+
+  /**
+   * Claim tokens from a stream
+   */
+  static async claimStream(streamId: string, amount: bigint): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+      // Check if wallet is available
+      if (!window.ethereum) {
+        return { success: false, error: "Wallet not found. Please install MetaMask or another wallet." };
+      }
+
+      // Create wallet client
+      const walletClient = createWalletClient({
+        chain: sepolia,
+        transport: custom(window.ethereum),
+      });
+
+      // Get the connected account
+      const [account] = await walletClient.getAddresses();
+      if (!account) {
+        return { success: false, error: "No account connected. Please connect your wallet." };
+      }
+
+      // Execute the claimStream transaction
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "claimStream",
+        args: [streamId, amount],
+        account,
+      });
+
+      console.log("Claim stream transaction hash:", hash);
+      return { success: true, txHash: hash };
+    } catch (error) {
+      console.error("Error claiming stream:", error);
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        if (error.message.includes("User rejected")) {
+          return { success: false, error: "Transaction was rejected by user." };
+        }
+        if (error.message.includes("insufficient funds")) {
+          return { success: false, error: "Insufficient funds for transaction." };
+        }
+        return { success: false, error: error.message };
+      }
+      
+      return { success: false, error: "An unknown error occurred while claiming the stream." };
+    }
+  }
+
+  /**
+   * Parse token amount for contract (convert from decimal to wei-like units)
+   */
+  static parseTokenAmount(amount: string, decimals: number = 6): bigint {
+    // Convert string amount to bigint with proper decimals
+    const factor = BigInt(10 ** decimals);
+    const [whole, decimal = ''] = amount.split('.');
+    const paddedDecimal = decimal.padEnd(decimals, '0').slice(0, decimals);
+    return BigInt(whole) * factor + BigInt(paddedDecimal);
   }
 }
