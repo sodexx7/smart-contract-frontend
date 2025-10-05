@@ -22,7 +22,7 @@ The application follows a simple three-part flow:
 - **Create Stream**: User workflow for token approval and stream creation on the smart contract
 - **Stream Actions**: View details and perform actions (Pause, Cancel, Claim) with automatic list refresh
 
-### 2. Front-end
+### 2. Front-end(current only support sepolia network)
 
 ![front-end](front-end.png)
 
@@ -65,9 +65,13 @@ Although the initial business logic satisfied my initial requirements, further c
 2. Figma
 3. [Front-end Technical Stack](Technical-Stack.md)
 
-## 5. Others
+## 5. Security Considerations
 
-### 5.0 The Power of AI-Assisted Coding
+As this is a demo project, I didn't put much attention on security aspects such as RPC URLs and private keys. However, developers should be aware of these sensitive pieces of information when developing production applications.
+
+## 6. Others
+
+### 6.0 The Power of AI-Assisted Coding
 
 1. For certain features, it's extremely efficient to write code or debug. For example, in this project, letting Claude Code adjust styles and display data by querying smart contracts works well within a limited timeframe. The more precise the description, the better the results.
 
@@ -75,21 +79,17 @@ Although the initial business logic satisfied my initial requirements, further c
 
 3. Of course, there are many features related to AI coding. This project only explores limited capabilities. More information can be found in [claude-code-best-practices](https://www.anthropic.com/engineering/claude-code-best-practices).
 
-### 5.1 Features or Issues Not Implemented or Verified
+### 6.1 Features or Issues Not Implemented or Verified
 
 1. Top up functionality
 2. Decimal adjustment for USDC
 3. Thorough testing (including edge cases) for stream creation and stream detail display
 4. Missing footer and other documentation
 
-### 5.2 The Increased Reading Burden of AI-Assisted Coding
+### 6.2 The Increased Reading Burden of AI-Assisted Coding
 
 Compared to typical coding practices, AI-assisted coding requires extensive reading, checking, and filtering tasks depending on the ultimate goal. It's easy to skip or ignore some content, which can sometimes leave potential problems for the future. However, a solid understanding of each manageable step will limit the risks, albeit at the cost of more time.
 
-### 5.3 Being Aware of AI-Generated Code
+### 6.3 Being Aware of AI-Generated Code
 
 There are differences between AI-generated code and human-written code. For example, higher quality human code shows an iterative process, meaning the logic has been verified, tested, and adjusted, while AI code seems perfect at first glance, but reveals more potential issues upon closer inspection. Additionally, the more AI-assisted coding experience one gains, the more intuition develops about working with AI, which helps programmers review AI-generated code more effectively.
-
-## 6. Security Considerations
-
-As this is a demo project, I didn't put much attention on security aspects such as RPC URLs and private keys. However, developers should be aware of these sensitive pieces of information when developing production applications.

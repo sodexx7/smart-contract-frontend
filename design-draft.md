@@ -90,7 +90,6 @@ The StreamBoost protocol uses a **natural completion model** where streams run u
 
 **Stream States**:
 
-- **SCHEDULED**: Stream created but not yet started
 - **ACTIVE**: Stream is running and tokens are vesting
 - **PAUSED**: Stream temporarily paused by sender (vesting stops)
 - **COMPLETED**: All tokens have been claimed or stream duration has ended
